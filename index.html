@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+<title>Face Mesh — Visualiser</title>
+<style>
+  :root {
+    --mesh: #5eead4;      /* line colour */
+    --accent: #22d3ee;    /* feature-line colour */
+    --bg: #05060a;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    height: 100%;
+    background: var(--bg);
+    color: #e6f7f4;
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, sans-serif;
+    overflow: hidden;
+    -webkit-tap-highlight-color: transparent;
+  }
+  #stage {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background:
+      radial-gradient(120% 90% at 50% 0%, #0b1022 0%, #05060a 60%, #020308 100%);
+  }
+  /* video + canvas share the same box; both mirrored for a natural selfie */
+  #video, #canvas {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%) scaleX(-1);
+    max-width: 100%;
+    max-height: 100%;
+  }
+  #video { opacity: 1; transition: opacity .5s ease; }
+  #video.hidden { opacity: 0; }
+  #canvas { z-index: 2; }
+
+  /* faint scanline / vignette polish */
+  #stage::after {
+    content: "";
+    position: fixed; inset: 0; z-index: 3; pointer-events: none;
+    background: radial-gradient(130% 100% at 50% 50%, transparent 55%, rgba(0,0,0,.55) 100%);
+  }
+
+  /* ---------- UI ---------- */
+  #startScreen {
+    position: fixed; inset: 0; z-index: 10;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 22px; text-align: center; padding: 28px;
+    background: radial-gradient(120% 90% at 50% 20%, #0b1022 0%, #05060a 70%);
+  }
+  #startScreen h1 {
+    font-weight: 600; font-size: clamp(24px, 6vw, 40px); letter-spacing: -0.02em;
+  }
+  #startScreen p { max-width: 30ch; line-height: 1.5; color: #8ea3a0; font-size: 15px; }
+  .btn {
+    appearance: none; border: 1px solid rgba(94,234,212,.4);
+    background: rgba(94,234,212,.08); color: var(--mesh);
+    font-size: 16px; font-weight: 600; letter-spacing: .01em;
+    padding: 14px 30px; border-radius: 999px; cursor: pointer;
+    backdrop-filter: blur(8px); transition: transform .15s ease, background .2s ease;
+  }
+  .btn:active { transform: scale(.97); }
+  .btn:hover { background: rgba(94,234,212,.16); }
+
+  #controls {
+    position: fixed; z-index: 9; left: 0; right: 0; bottom: 0;
+    display: none; gap: 10px; justify-content: center; flex-wrap: wrap;
+    padding: 16px calc(16px + env(safe-area-inset-right)) calc(20px + env(safe-area-inset-bottom)) calc(16px + env(safe-area-inset-left));
+    background: linear-gradient(0deg, rgba(2,3,8,.85), transparent);
+  }
+  #controls.show { display: flex; }
+  .chip {
+    appearance: none; border: 1px solid rgba(255,255,255,.14);
+    background: rgba(255,255,255,.05); color: #cfe9e5;
+    font-size: 13px; font-weight: 500; padding: 9px 16px; border-radius: 999px;
+    cursor: pointer; backdrop-filter: blur(10px); transition: background .2s, border-color .2s;
+    display: inline-flex; align-items: center; gap: 7px;
+  }
+  .chip[aria-pressed="true"] { border-color: var(--mesh); color: var(--mesh); background: rgba(94,234,212,.12); }
+  .swatch { width: 14px; height: 14px; border-radius: 50%; box-shadow: 0 0 8px currentColor; }
+
+  #status {
+    position: fixed; z-index: 9; top: calc(14px + env(safe-area-inset-top)); left: 50%;
+    transform: translateX(-50%);
+    font-size: 12px; letter-spacing: .04em; text-transform: uppercase;
+    color: #6f8683; background: rgba(2,3,8,.5); padding: 6px 14px; border-radius: 999px;
+    backdrop-filter: blur(8px); transition: opacity .4s ease; pointer-events: none;
+  }
+  #status.hide { opacity: 0; }
+  .err { color: #fca5a5 !important; }
+</style>
+</head>
+<body>
+  <div id="stage">
+    <video id="video" playsinline autoplay muted></video>
+    <canvas id="canvas"></canvas>
+  </div>
+
+  <div id="status">initialising…</div>
+
+  <div id="controls">
+    <button class="chip" id="toggleVideo" aria-pressed="true">Camera</button>
+    <button class="chip" id="cycleDensity">Detail: Simple</button>
+    <button class="chip" id="cycleColor"><span class="swatch" style="color:var(--mesh)"></span>Colour</button>
+    <button class="chip" id="toggleGlow" aria-pressed="true">Glow</button>
+  </div>
+
+  <div id="startScreen">
+    <h1>Face&nbsp;Mesh</h1>
+    <p>A live wireframe that tracks your face using the front camera. Nothing leaves your device — all processing happens in the browser.</p>
+    <button class="btn" id="startBtn">Start camera</button>
+  </div>
+
+<script type="module">
+import {
+  FaceLandmarker,
+  FilesetResolver,
+  DrawingUtils
+} from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.12";
+
+const video   = document.getElementById("video");
+const canvas  = document.getElementById("canvas");
+const ctx     = canvas.getContext("2d");
+const statusEl = document.getElementById("status");
+const startScreen = document.getElementById("startScreen");
+const controls = document.getElementById("controls");
+
+let faceLandmarker;
+let running = false;
+let lastVideoTime = -1;
+let drawUtils;
+
+// ---- visual state ----
+const palettes = [
+  { mesh: "#5eead4", accent: "#22d3ee", hue: 172 }, // teal / cyan
+  { mesh: "#c4b5fd", accent: "#f0abfc", hue: 280 }, // violet / pink
+  { mesh: "#fbbf24", accent: "#fb7185", hue: 40  }, // amber / rose
+  { mesh: "#67e8f9", accent: "#a5b4fc", hue: 200 }, // ice
+];
+let paletteIndex = 0;
+let showVideo = true;
+let glow = true;
+
+// mesh density — fewer kept points => bigger, simpler triangles
+const densities = [
+  { label: "Simple",   step: 10 },
+  { label: "Medium",   step: 6 },
+  { label: "Detailed", step: 4 },
+];
+let densityIndex = 0;
+const keptCache = {};
+
+// face-acquisition flash ("cuttlefish") state
+let faceWasPresent = false;
+let flashStart = -1e9;
+
+function setStatus(msg, isErr = false) {
+  statusEl.textContent = msg;
+  statusEl.classList.toggle("err", isErr);
+  statusEl.classList.remove("hide");
+}
+
+async function createLandmarker() {
+  setStatus("loading model…");
+  const filesetResolver = await FilesetResolver.forVisionTasks(
+    "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.12/wasm"
+  );
+  faceLandmarker = await FaceLandmarker.createFromOptions(filesetResolver, {
+    baseOptions: {
+      modelAssetPath:
+        "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task",
+      delegate: "GPU"
+    },
+    outputFaceBlendshapes: false,
+    runningMode: "VIDEO",
+    numFaces: 1
+  });
+}
+
+async function startCamera() {
+  try {
+    setStatus("requesting camera…");
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: "user", width: { ideal: 1280 }, height: { ideal: 720 } },
+      audio: false
+    });
+    video.srcObject = stream;
+    await video.play();
+    resize();
+    running = true;
+    controls.classList.add("show");
+    setStatus("tracking");
+    setTimeout(() => statusEl.classList.add("hide"), 1800);
+    requestAnimationFrame(loop);
+  } catch (e) {
+    setStatus("camera blocked — allow access & reload", true);
+    console.error(e);
+  }
+}
+
+function resize() {
+  // match canvas to the displayed video size so overlay lines up
+  const vw = video.videoWidth || 1280;
+  const vh = video.videoHeight || 720;
+  const stage = document.getElementById("stage");
+  const scale = Math.min(stage.clientWidth / vw, stage.clientHeight / vh);
+  const w = vw * scale, h = vh * scale;
+  [video, canvas].forEach(el => { el.style.width = w + "px"; el.style.height = h + "px"; });
+  canvas.width = vw;
+  canvas.height = vh;
+  drawUtils = new DrawingUtils(ctx);
+}
+window.addEventListener("resize", () => { if (running) resize(); });
+
+function loop() {
+  if (!running) return;
+  if (video.currentTime !== lastVideoTime) {
+    lastVideoTime = video.currentTime;
+    const result = faceLandmarker.detectForVideo(video, performance.now());
+    render(result);
+  }
+  requestAnimationFrame(loop);
+}
+
+// choose a sparse subset of landmark indices for a low-poly look.
+// always include the face-outline points so the silhouette stays clean.
+function getKept(step, count) {
+  const key = step + "_" + count;
+  if (keptCache[key]) return keptCache[key];
+  const set = new Set();
+  // thinned face outline (every other point around the ring)
+  const oval = FaceLandmarker.FACE_LANDMARKS_FACE_OVAL.map(c => c.start);
+  for (let j = 0; j < oval.length; j += 2) set.add(oval[j]);
+  for (let i = 0; i < count; i++) if (i % step === 0) set.add(i);
+  const arr = [...set].filter(i => i < count);
+  keptCache[key] = arr;
+  return arr;
+}
+
+// orientation-independent circumcircle test (Delaunay)
+function inCircle(p, a, b, c) {
+  const d = 2 * (a.x * (b.y - c.y) + b.x * (c.y - a.y) + c.x * (a.y - b.y));
+  if (Math.abs(d) < 1e-9) return false;
+  const a2 = a.x * a.x + a.y * a.y, b2 = b.x * b.x + b.y * b.y, c2 = c.x * c.x + c.y * c.y;
+  const ux = (a2 * (b.y - c.y) + b2 * (c.y - a.y) + c2 * (a.y - b.y)) / d;
+  const uy = (a2 * (c.x - b.x) + b2 * (a.x - c.x) + c2 * (b.x - a.x)) / d;
+  const r2 = (a.x - ux) ** 2 + (a.y - uy) ** 2;
+  return (p.x - ux) ** 2 + (p.y - uy) ** 2 < r2 - 1e-9;
+}
+
+// Bowyer–Watson Delaunay triangulation over the kept points
+function triangulate(pts) {
+  const n = pts.length;
+  if (n < 3) return [];
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const p of pts) {
+    if (p.x < minX) minX = p.x; if (p.y < minY) minY = p.y;
+    if (p.x > maxX) maxX = p.x; if (p.y > maxY) maxY = p.y;
+  }
+  const dmax = Math.max(maxX - minX, maxY - minY) || 1;
+  const mx = (minX + maxX) / 2, my = (minY + maxY) / 2;
+  const all = pts.concat([
+    { x: mx - 20 * dmax, y: my - dmax },
+    { x: mx, y: my + 20 * dmax },
+    { x: mx + 20 * dmax, y: my - dmax },
+  ]);
+  let tris = [[n, n + 1, n + 2]];
+  for (let i = 0; i < n; i++) {
+    const p = all[i];
+    const edges = [];
+    const keep = [];
+    for (const t of tris) {
+      if (inCircle(p, all[t[0]], all[t[1]], all[t[2]])) {
+        edges.push([t[0], t[1]], [t[1], t[2]], [t[2], t[0]]);
+      } else keep.push(t);
+    }
+    tris = keep;
+    for (let a = 0; a < edges.length; a++) {
+      let count = 0;
+      for (let b = 0; b < edges.length; b++) {
+        if ((edges[a][0] === edges[b][0] && edges[a][1] === edges[b][1]) ||
+            (edges[a][0] === edges[b][1] && edges[a][1] === edges[b][0])) count++;
+      }
+      if (count === 1) tris.push([edges[a][0], edges[a][1], i]);
+    }
+  }
+  return tris.filter(t => t[0] < n && t[1] < n && t[2] < n);
+}
+
+function render(result) {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  const pal = palettes[paletteIndex];
+
+  if (!result.faceLandmarks || result.faceLandmarks.length === 0) { faceWasPresent = false; return; }
+  if (!faceWasPresent) { flashStart = performance.now(); faceWasPresent = true; }
+
+  const W = canvas.width, H = canvas.height;
+
+  ctx.save();
+  if (glow) {
+    ctx.shadowColor = pal.mesh;
+    ctx.shadowBlur = 6;
+  }
+
+  for (const landmarks of result.faceLandmarks) {
+    const step = densities[densityIndex].step;
+    const kept = getKept(step, landmarks.length);
+    const pts = kept.map(i => ({ x: landmarks[i].x * W, y: landmarks[i].y * H }));
+
+    // collect unique edges of the low-poly mesh
+    const tris = triangulate(pts);
+    const seen = new Set();
+    const edges = [];
+    for (const t of tris) {
+      const e = [[t[0], t[1]], [t[1], t[2]], [t[2], t[0]]];
+      for (const [a, b] of e) {
+        const k = a < b ? a + "_" + b : b + "_" + a;
+        if (seen.has(k)) continue;
+        seen.add(k);
+        edges.push([a, b]);
+      }
+    }
+
+    // travelling "cuttlefish" colour wave across the mesh.
+    // a steady shimmer plays continuously; catching a face fires a brighter burst.
+    const now = performance.now();
+    const tt = now / 1000;
+    const burst = Math.max(0, 1 - (now - flashStart) / 1500); // decays over ~1.5s
+    ctx.lineWidth = 1.1;
+    for (const [a, b] of edges) {
+      const mx = (pts[a].x + pts[b].x) / 2;
+      const my = (pts[a].y + pts[b].y) / 2;
+      const u = (mx / W) * 0.6 + (my / H) * 0.4;            // diagonal sweep axis
+      const wave = 0.5 + 0.5 * Math.sin(u * Math.PI * 3.5 - tt * 2.4);
+      const hue = (pal.hue + u * 120 + tt * 30) % 360;
+      const sat = Math.min(100, 60 + wave * 25 + burst * 15);
+      const light = 45 + wave * 30;
+      const alpha = Math.min(1, 0.2 + wave * (0.45 + burst * 0.55));
+      ctx.strokeStyle = `hsla(${hue}, ${sat}%, ${light}%, ${alpha})`;
+      ctx.beginPath();
+      ctx.moveTo(pts[a].x, pts[a].y);
+      ctx.lineTo(pts[b].x, pts[b].y);
+      ctx.stroke();
+    }
+
+    // feature accents — eyes, lips, outline
+    const feat = { color: pal.accent, lineWidth: 1.4 };
+    drawUtils.drawConnectors(landmarks, FaceLandmarker.FACE_LANDMARKS_RIGHT_EYE, feat);
+    drawUtils.drawConnectors(landmarks, FaceLandmarker.FACE_LANDMARKS_LEFT_EYE, feat);
+    drawUtils.drawConnectors(landmarks, FaceLandmarker.FACE_LANDMARKS_LIPS, feat);
+    drawUtils.drawConnectors(landmarks, FaceLandmarker.FACE_LANDMARKS_FACE_OVAL,
+      { color: pal.accent, lineWidth: 1.8 });
+  }
+  ctx.restore();
+}
+
+// ---- controls ----
+document.getElementById("toggleVideo").addEventListener("click", (e) => {
+  showVideo = !showVideo;
+  video.classList.toggle("hidden", !showVideo);
+  e.currentTarget.setAttribute("aria-pressed", String(showVideo));
+});
+document.getElementById("cycleDensity").addEventListener("click", (e) => {
+  densityIndex = (densityIndex + 1) % densities.length;
+  e.currentTarget.textContent = "Detail: " + densities[densityIndex].label;
+});
+document.getElementById("toggleGlow").addEventListener("click", (e) => {
+  glow = !glow;
+  e.currentTarget.setAttribute("aria-pressed", String(glow));
+});
+document.getElementById("cycleColor").addEventListener("click", (e) => {
+  paletteIndex = (paletteIndex + 1) % palettes.length;
+  const pal = palettes[paletteIndex];
+  document.documentElement.style.setProperty("--mesh", pal.mesh);
+  document.documentElement.style.setProperty("--accent", pal.accent);
+  e.currentTarget.querySelector(".swatch").style.color = pal.mesh;
+});
+
+// ---- boot ----
+document.getElementById("startBtn").addEventListener("click", async () => {
+  startScreen.style.display = "none";
+  if (!faceLandmarker) {
+    try { await createLandmarker(); }
+    catch (e) { setStatus("failed to load model — check connection", true); console.error(e); return; }
+  }
+  startCamera();
+});
+
+// warm up the model while the user reads the intro
+createLandmarker().then(() => setStatus("ready — tap start")).catch(() => {});
+</script>
+</body>
+</html>
