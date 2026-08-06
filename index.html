@@ -156,6 +156,11 @@ let nextWashAt = 0;
 const WASH_MS = 4200;                       // how long one colour wash lasts
 const rand = (a, b) => a + Math.random() * (b - a);
 
+// landmark points a wash can radiate from: nose, forehead, chin, brow,
+// left/right cheek, left/right eye, mouth — so each scan targets a different region
+const SCAN_POINTS = [1, 10, 152, 168, 234, 454, 33, 263, 13];
+let scanOriginIdx = 1;
+
 function setStatus(msg, isErr = false) {
   statusEl.textContent = msg;
   statusEl.classList.toggle("err", isErr);
@@ -295,8 +300,12 @@ function render(result) {
   if (!result.faceLandmarks || result.faceLandmarks.length === 0) { faceWasPresent = false; return; }
   const now = performance.now();
   if (!faceWasPresent) { faceWasPresent = true; nextWashAt = now + rand(15000, 45000); }
-  // fire a colour wash on schedule, then queue the next one 15–45s out
-  if (now >= nextWashAt) { washStart = now; nextWashAt = now + WASH_MS + rand(15000, 45000); }
+  // fire a colour wash on schedule from a random face point, then queue the next one
+  if (now >= nextWashAt) {
+    washStart = now;
+    scanOriginIdx = SCAN_POINTS[Math.floor(Math.random() * SCAN_POINTS.length)];
+    nextWashAt = now + WASH_MS + rand(15000, 45000);
+  }
 
   const W = canvas.width, H = canvas.height;
 
@@ -325,27 +334,32 @@ function render(result) {
       }
     }
 
-    // face bounding box so the sweep spans the actual face, not the whole canvas
+    // face size, used to normalise the radiating distance
     let bMinX = Infinity, bMinY = Infinity, bMaxX = -Infinity, bMaxY = -Infinity;
     for (const p of pts) {
       if (p.x < bMinX) bMinX = p.x; if (p.y < bMinY) bMinY = p.y;
       if (p.x > bMaxX) bMaxX = p.x; if (p.y > bMaxY) bMaxY = p.y;
     }
-    const bW = (bMaxX - bMinX) || 1, bH = (bMaxY - bMinY) || 1;
+    const faceDiag = Math.hypot(bMaxX - bMinX, bMaxY - bMinY) || 1;
 
-    // white mesh; a royal-blue -> magenta gradient band travels through during a wash
+    // point this wash radiates from (a landmark, so the origin tracks the face)
+    const origin = landmarks[scanOriginIdx] || landmarks[1];
+    const ox = origin.x * W, oy = origin.y * H;
+
+    // white mesh; a royal-blue -> magenta ring expands outward from the origin during a wash
     const washP = (now - washStart) / WASH_MS;            // 0..1 while washing, else >1
     const washing = washP >= 0 && washP <= 1;
-    const band = 0.32;                                    // half-width of the band (face-normalised)
-    const front = washP * (1 + band * 2) - band;          // gradient front travels across the face
+    const band = 0.34;                                    // half-width of the ring (face-normalised)
+    const span = 1.25;                                    // how far the ring travels outward
+    const front = washP * (span + band * 2) - band;       // ring radius grows over the wash
     ctx.lineWidth = 1.2;
     for (const [a, b] of edges) {
       const mx = (pts[a].x + pts[b].x) / 2;
       const my = (pts[a].y + pts[b].y) / 2;
-      const u = ((mx - bMinX) / bW) * 0.6 + ((my - bMinY) / bH) * 0.4; // 0..1 across the face
-      const s = (u - front) / band;                       // -1..1 inside the band
+      const d = Math.hypot(mx - ox, my - oy) / faceDiag;  // distance from origin, 0..~1
+      const s = (d - front) / band;                       // -1..1 inside the ring
       const amount = washing ? Math.max(0, 1 - Math.abs(s)) : 0;
-      const t = Math.min(1, Math.max(0, (s + 1) / 2));     // 0 = trailing, 1 = leading edge
+      const t = Math.min(1, Math.max(0, (s + 1) / 2));     // inner -> outer edge of the ring
       const hue = 225 + t * 75;                            // royal blue (225) -> magenta (300)
       const sat = amount * 92;
       const light = 100 - amount * 45;                     // white -> colour
