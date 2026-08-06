@@ -157,9 +157,12 @@ const densities = [
 let densityIndex = 0;
 const keptCache = {};
 
-// face-acquisition flash ("cuttlefish") state
+// colour-wash state: mesh is white, washes fire on a random 15–45s timer
 let faceWasPresent = false;
-let flashStart = -1e9;
+let washStart = -1e9;
+let nextWashAt = 0;
+const WASH_MS = 3600;                       // how long one colour wash lasts
+const rand = (a, b) => a + Math.random() * (b - a);
 
 function setStatus(msg, isErr = false) {
   statusEl.textContent = msg;
@@ -299,13 +302,16 @@ function render(result) {
   const pal = palettes[paletteIndex];
 
   if (!result.faceLandmarks || result.faceLandmarks.length === 0) { faceWasPresent = false; return; }
-  if (!faceWasPresent) { flashStart = performance.now(); faceWasPresent = true; }
+  const now = performance.now();
+  if (!faceWasPresent) { faceWasPresent = true; nextWashAt = now + rand(15000, 45000); }
+  // fire a colour wash on schedule, then queue the next one 15–45s out
+  if (now >= nextWashAt) { washStart = now; nextWashAt = now + WASH_MS + rand(15000, 45000); }
 
   const W = canvas.width, H = canvas.height;
 
   ctx.save();
   if (glow) {
-    ctx.shadowColor = pal.mesh;
+    ctx.shadowColor = "#ffffff";
     ctx.shadowBlur = 6;
   }
 
@@ -328,21 +334,21 @@ function render(result) {
       }
     }
 
-    // travelling "cuttlefish" colour wave across the mesh.
-    // a steady shimmer plays continuously; catching a face fires a brighter burst.
-    const now = performance.now();
-    const tt = now / 1000;
-    const burst = Math.max(0, 1 - (now - flashStart) / 1500); // decays over ~1.5s
+    // white mesh; a band of colour sweeps through during a wash
+    const washP = (now - washStart) / WASH_MS;            // 0..1 while washing, else >1
+    const washing = washP >= 0 && washP <= 1;
+    const band = 0.4;                                     // width of the colour band
+    const front = washP * (1 + band * 2) - band;          // band travels across the face
     ctx.lineWidth = 1.1;
     for (const [a, b] of edges) {
       const mx = (pts[a].x + pts[b].x) / 2;
       const my = (pts[a].y + pts[b].y) / 2;
-      const u = (mx / W) * 0.6 + (my / H) * 0.4;            // diagonal sweep axis
-      const wave = 0.5 + 0.5 * Math.sin(u * Math.PI * 3.5 - tt * 2.4);
-      const hue = (pal.hue + u * 120 + tt * 30) % 360;
-      const sat = Math.min(100, 60 + wave * 25 + burst * 15);
-      const light = 45 + wave * 30;
-      const alpha = Math.min(1, 0.2 + wave * (0.45 + burst * 0.55));
+      const u = (mx / W) * 0.6 + (my / H) * 0.4;          // diagonal sweep axis
+      const amount = washing ? Math.max(0, 1 - Math.abs(u - front) / band) : 0;
+      const hue = (pal.hue + u * 140) % 360;
+      const sat = amount * 95;
+      const light = 100 - amount * 42;                    // white -> colour
+      const alpha = 0.6 + amount * 0.4;
       ctx.strokeStyle = `hsla(${hue}, ${sat}%, ${light}%, ${alpha})`;
       ctx.beginPath();
       ctx.moveTo(pts[a].x, pts[a].y);
@@ -350,13 +356,13 @@ function render(result) {
       ctx.stroke();
     }
 
-    // feature accents — eyes, lips, outline
-    const feat = { color: pal.accent, lineWidth: 1.4 };
+    // feature accents — eyes, lips, outline (kept white)
+    const feat = { color: "rgba(255,255,255,0.85)", lineWidth: 1.3 };
     drawUtils.drawConnectors(landmarks, FaceLandmarker.FACE_LANDMARKS_RIGHT_EYE, feat);
     drawUtils.drawConnectors(landmarks, FaceLandmarker.FACE_LANDMARKS_LEFT_EYE, feat);
     drawUtils.drawConnectors(landmarks, FaceLandmarker.FACE_LANDMARKS_LIPS, feat);
     drawUtils.drawConnectors(landmarks, FaceLandmarker.FACE_LANDMARKS_FACE_OVAL,
-      { color: pal.accent, lineWidth: 1.8 });
+      { color: "rgba(255,255,255,0.9)", lineWidth: 1.6 });
   }
   ctx.restore();
 }
