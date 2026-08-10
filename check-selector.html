@@ -89,9 +89,11 @@
 
   .safe-grid {
     position: absolute; left: 76.5px; top: 127px; width: 187px; height: 232px; z-index: 5;
-    color: rgba(255,255,255,1); opacity: var(--grid-opacity);
-    transition: opacity .35s ease; pointer-events: none;
+    color: #fff; opacity: 0.6;
+    transition: color .25s ease, opacity .5s ease; pointer-events: none;
   }
+  .safe-grid.searching { color: #ff3b3b; opacity: 0.6; }                 /* no aligned face yet */
+  .safe-grid.aligned   { color: #46e6b0; opacity: 0; transition: color .2s ease, opacity .5s ease .2s; } /* green, then fade out */
   .safe-grid svg { width: 100%; height: 100%; display: block; }
   .safe-grid svg path { fill: currentColor; }
 
@@ -104,8 +106,17 @@
 
   .interaction {
     position: absolute; left: 50%; bottom: 96px; transform: translateX(-50%); z-index: 6;
-    display: flex; align-items: center; gap: 16px;
+    display: flex; align-items: center; gap: 16px; transition: opacity .3s ease;
   }
+  .top-section.running .interaction { opacity: 0; pointer-events: none; }
+  .stop-btn {
+    position: absolute; top: 20px; right: 20px; z-index: 7;
+    width: 34px; height: 34px; border-radius: 50%;
+    background: rgba(17,17,17,0.5); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+    display: none; align-items: center; justify-content: center; cursor: pointer;
+    color: #fff; font-size: 20px; line-height: 1;
+  }
+  .top-section.running .stop-btn { display: flex; }
   .icon-btn {
     width: 44px; height: 44px; border-radius: 50%;
     background: rgba(17,17,17,0.6); backdrop-filter: blur(11px); -webkit-backdrop-filter: blur(11px);
@@ -189,6 +200,8 @@
               </div>
             </div>
 
+            <div class="stop-btn" id="stopBtn">&times;</div>
+
             <div class="caption">Check your Blood Pressure and more by scanning your face</div>
           </div>
 
@@ -236,6 +249,7 @@ const HOLD_MS = 180;              // brief debounce before showing the mesh
 
 // ---------- elements ----------
 const stage = document.getElementById("stage");
+const topSection = document.getElementById("topSection");
 const video = document.getElementById("video");
 const canvas = document.getElementById("mesh");
 const ctx = canvas.getContext("2d");
@@ -288,6 +302,7 @@ async function startCamera() {
     await video.play();
     if (!faceLandmarker) await createLandmarker();
     video.classList.add("on");
+    topSection.classList.add("running");
     running = true;
     requestAnimationFrame(loop);
   } catch (e) {
@@ -295,6 +310,18 @@ async function startCamera() {
     errEl.style.display = "block";
     console.error(e);
   }
+}
+
+function stopCamera() {
+  running = false;
+  const s = video.srcObject; if (s) s.getTracks().forEach(t => t.stop());
+  video.srcObject = null;
+  video.classList.remove("on");
+  topSection.classList.remove("running");
+  safeGrid.classList.remove("aligned", "searching");
+  ctx.clearRect(0, 0, CARD_W, CARD_H);
+  active = false; prevActive = false; alignedSince = 0;
+  errEl.style.display = "none";
 }
 
 // ---------- cover-fit mapping: normalized video coords -> card coords ----------
@@ -348,8 +375,9 @@ function tick(res) {
     alignedSince = 0; active = false;
   }
 
-  // Safe Grid dims to 30% while the face is in place, returns to original otherwise
-  document.documentElement.style.setProperty("--grid-opacity", active ? "0.3" : "0.6");
+  // Safe Grid: green + fade out when aligned; red while still searching
+  if (active) { safeGrid.classList.add("aligned"); safeGrid.classList.remove("searching"); }
+  else { safeGrid.classList.add("searching"); safeGrid.classList.remove("aligned"); }
 
   if (active) {
     if (!prevActive) { washStart = -1e9; nextWashAt = now + 800; } // fresh scan
@@ -462,6 +490,7 @@ function drawMesh(landmarks, now) {
 
 // ---------- boot ----------
 document.getElementById("startBtn").addEventListener("click", startCamera);
+document.getElementById("stopBtn").addEventListener("click", stopCamera);
 window.addEventListener("resize", () => { sizeCanvas(); fitStage(); });
 sizeCanvas();
 fitStage();
