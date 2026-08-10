@@ -3,16 +3,15 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
-<title>Blood Pressure — Face Scan</title>
+<title>Check Selector — Blood Pressure</title>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Ubuntu:wght@400;500&display=swap" rel="stylesheet" />
 <style>
   :root {
-    --card-w: 342px;
+    --card-w: 342px;      /* blue camera section (Figma Top section) */
     --card-h: 570px;
-    --blue: #1500ff;
-    --grid-color: rgba(255,255,255,0.6);
+    --grid-opacity: 0.6;  /* Safe Grid original opacity (Figma) */
   }
   * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
   html, body {
@@ -24,45 +23,55 @@
   }
   @media (prefers-color-scheme: dark) { body { background: #0f1115; } }
 
-  /* ---------------- CARD ---------------- */
+  .stage { transform-origin: center center; }
+
+  /* ---------------- FULL CARD (Category section) ---------------- */
   .card {
-    position: relative;
-    width: var(--card-w);
-    height: var(--card-h);
+    width: 390px;
+    background: #ffffff;
     border-radius: 24px;
-    border: 2px solid #fff;
-    background: var(--blue);
+    box-shadow: 0 4px 24px 0 rgba(17,17,17,0.12);
     overflow: hidden;
-    box-shadow: 0 4px 24px 0 rgba(17,17,17,0.20);
-    isolation: isolate;
+    display: flex; flex-direction: column; align-items: flex-start;
   }
 
-  /* live camera + mesh, both mirrored like a selfie */
+  .header { padding: 24px 16px 20px 42px; width: 390px; }
+  .header h2 {
+    font-weight: 500; font-size: 18px; line-height: 24px; letter-spacing: -0.1px; color: #111;
+  }
+
+  .body {
+    width: 390px; padding: 0 16px 8px; display: flex; flex-direction: column;
+    gap: 8px; align-items: center; border-bottom: 1px solid #e5e5e5;
+  }
+
+  /* three overlapping cards (blue on top, two pink peeking) */
+  .check-stack { display: flex; align-items: center; }
+  .top-section {
+    position: relative; width: var(--card-w); height: var(--card-h);
+    border-radius: 24px; border: 2px solid #fff; overflow: hidden;
+    margin-right: -330px; z-index: 3;
+    background: #08090d;                          /* camera-off; blue tint removed */
+    box-shadow: 0 4px 24px 0 rgba(17,17,17,0.12);
+  }
+  .stack { width: var(--card-w); border-radius: 24px; }
+  .stack1 { height: 538px; background: #ffbfbd; margin-right: -330px; z-index: 2; }
+  .stack2 { height: 506px; background: #ffdad8; z-index: 1; }
+
+  /* live camera + mesh, mirrored like a selfie */
   #video, #mesh {
-    position: absolute; inset: 0;
-    width: 100%; height: 100%;
+    position: absolute; inset: 0; width: 100%; height: 100%;
     transform: scaleX(-1);
   }
-  #video { object-fit: cover; opacity: 0; transition: opacity .5s ease; z-index: 1; }
+  #video { object-fit: cover; opacity: 0; transition: opacity .4s ease; z-index: 1; }
   #video.on { opacity: 1; }
   #mesh { z-index: 2; pointer-events: none; }
 
-  /* darkening at the base for legibility (the Figma "Base" gradient) */
   .base-fade {
-    position: absolute; left: 0; right: 0; bottom: 0; height: 240px; z-index: 3;
-    background: linear-gradient(to bottom, rgba(0,0,0,0) 0%, rgba(0,0,0,0.85) 78%, #000 100%);
-    pointer-events: none;
+    position: absolute; left: 0; right: 0; bottom: 0; height: 220px; z-index: 3; pointer-events: none;
+    background: linear-gradient(to bottom, rgba(0,0,0,0) 0%, rgba(0,0,0,0.82) 80%, #000 100%);
   }
-  /* a soft blue veil over the video so it stays on-brand while positioning */
-  .brand-veil {
-    position: absolute; inset: 0; z-index: 2; pointer-events: none;
-    background: radial-gradient(120% 80% at 50% 30%, rgba(21,0,255,0.28), rgba(21,0,255,0.55));
-    opacity: 0; transition: opacity .5s ease;
-  }
-  .card.camera .brand-veil { opacity: 1; }
-  .card.scanning .brand-veil { opacity: .5; }
 
-  /* title lockup */
   .title-lockup {
     position: absolute; left: 27px; top: 27px; width: 182px; z-index: 6;
     display: flex; flex-direction: column; gap: 12px;
@@ -78,147 +87,184 @@
   }
   .ai-pill span { font-weight: 500; font-size: 15.75px; color: #fff; letter-spacing: -0.37px; }
 
-  /* safe grid oval */
   .safe-grid {
     position: absolute; left: 76.5px; top: 127px; width: 187px; height: 232px; z-index: 5;
-    color: var(--grid-color);
-    transition: color .35s ease, opacity .5s ease, transform .5s ease;
-    pointer-events: none;
+    color: rgba(255,255,255,1); opacity: var(--grid-opacity);
+    transition: opacity .35s ease; pointer-events: none;
   }
   .safe-grid svg { width: 100%; height: 100%; display: block; }
   .safe-grid svg path { fill: currentColor; }
-  .card.scanning .safe-grid { opacity: 0; transform: scale(1.04); }
 
-  /* caption */
   .caption {
     position: absolute; left: 50%; bottom: 34px; transform: translateX(-50%); z-index: 6;
-    width: 240px; text-align: center; color: #fff;
+    width: 220px; text-align: center; color: #fff;
     font-size: 14px; line-height: 20px; font-weight: 400;
-    text-shadow: 0 1px 6px rgba(0,0,0,0.4);
-    transition: opacity .3s ease;
+    text-shadow: 0 1px 6px rgba(0,0,0,0.45);
   }
 
-  /* main interaction row (idle only) */
   .interaction {
-    position: absolute; left: 50%; bottom: 92px; transform: translateX(-50%); z-index: 6;
+    position: absolute; left: 50%; bottom: 96px; transform: translateX(-50%); z-index: 6;
     display: flex; align-items: center; gap: 16px;
-    transition: opacity .35s ease;
   }
-  .card.camera .interaction, .card.scanning .interaction { opacity: 0; pointer-events: none; }
-
   .icon-btn {
     width: 44px; height: 44px; border-radius: 50%;
-    background: rgba(17,17,17,0.6); backdrop-filter: blur(11px);
+    background: rgba(17,17,17,0.6); backdrop-filter: blur(11px); -webkit-backdrop-filter: blur(11px);
     display: flex; align-items: center; justify-content: center;
     box-shadow: 0 4px 10px 0 rgba(0,0,0,0.04); cursor: pointer;
   }
   .icon-btn svg { width: 24px; height: 24px; display: block; }
-
   .start-btn {
-    width: 76px; height: 76px; border-radius: 50%; cursor: pointer;
+    width: 76px; height: 76px; border-radius: 50%; cursor: pointer; padding: 5.7px;
     background: linear-gradient(to bottom, #fc5f2b, #ea0e3e);
     border: 1.9px solid rgba(255,255,255,0.6);
     box-shadow: 0 4px 24px 0 rgba(0,0,0,0.2);
     display: flex; align-items: center; justify-content: center;
     transition: transform .12s ease;
-    padding: 5.7px;
   }
   .start-btn:active { transform: scale(0.95); }
   .start-btn span { font-weight: 500; font-size: 15px; letter-spacing: 2px; color: #fff; }
 
-  /* stop (×) shown while camera runs */
-  .stop-btn {
-    position: absolute; top: 20px; right: 20px; z-index: 7;
-    width: 34px; height: 34px; border-radius: 50%;
-    background: rgba(17,17,17,0.5); backdrop-filter: blur(8px);
-    display: none; align-items: center; justify-content: center; cursor: pointer;
-    color: #fff; font-size: 20px; line-height: 1;
+  /* check-type selector */
+  .check-types { display: flex; flex-direction: column; align-items: center; width: 100%; }
+  .selector-mask {
+    width: 100%; display: flex; align-items: center; justify-content: center;
+    -webkit-mask: url(assets/selector-mask.svg) center / 358px 28px no-repeat;
+            mask: url(assets/selector-mask.svg) center / 358px 28px no-repeat;
   }
-  .card.camera .stop-btn, .card.scanning .stop-btn { display: flex; }
+  .selector {
+    display: flex; align-items: center; padding: 0 2px;
+    backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+  }
+  .selector .divider { width: 1px; height: 16px; background: #e5e5e5; border-radius: 1px; flex: none; }
+  .selector .item-active { padding: 4px 12px; font-weight: 500; font-size: 16px; line-height: 22px; color: #111; white-space: nowrap; }
+  .selector .item-next   { padding: 4px 8px;  font-weight: 400; font-size: 14px; line-height: 20px; color: #666; white-space: nowrap; }
+  .caret { width: 9.17px; height: 9.25px; margin-top: 5px; }
+  .caret svg { width: 100%; height: 100%; display: block; }
 
-  .hint {
-    position: fixed; bottom: 18px; left: 0; right: 0; text-align: center;
-    font-size: 12px; color: #8a93a3; z-index: 20;
+  /* footer */
+  .footer { width: 100%; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; padding: 6px 0; }
+  .explore-btn {
+    display: flex; align-items: center; gap: 4px; height: 31px; padding: 6px 8px;
+    border-radius: 999px; background: none; border: none; cursor: pointer;
+  }
+  .explore-btn svg { width: 20px; height: 20px; display: block; }
+  .explore-btn span { font-weight: 500; font-size: 18px; line-height: 24px; letter-spacing: -0.1px; color: #111; }
+
+  .err {
+    position: fixed; bottom: 14px; left: 0; right: 0; text-align: center;
+    font-size: 12px; color: #d33; z-index: 30; display: none;
   }
 </style>
 </head>
 <body>
-  <div class="card" id="card">
-    <video id="video" playsinline autoplay muted></video>
-    <canvas id="mesh"></canvas>
-    <div class="brand-veil"></div>
-    <div class="base-fade"></div>
+  <div class="stage" id="stage">
+    <div class="card">
+      <div class="header"><h2>Blood Health</h2></div>
 
-    <div class="title-lockup">
-      <h1>Blood Pressure</h1>
-      <div class="ai-pill"><span>AI</span></div>
-    </div>
+      <div class="body">
+        <div class="check-stack">
+          <div class="top-section" id="topSection">
+            <video id="video" playsinline autoplay muted></video>
+            <canvas id="mesh"></canvas>
+            <div class="base-fade"></div>
 
-    <div class="safe-grid" id="safeGrid">
-      <svg viewBox="0 0 187 232" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
-        <path d="M2.3966 144.473C3.48123 144.473 4.4167 145.236 4.65587 146.294C12.8265 182.436 34.4351 210.987 61.7543 223.639C62.598 224.03 63.1476 224.869 63.1476 225.798C63.1476 227.467 61.4555 228.598 59.9398 227.901C31.0496 214.599 8.6264 184.582 0.174771 147.23C-0.146203 145.811 0.942185 144.473 2.3966 144.473ZM184.46 144.473C185.914 144.473 187.002 145.811 186.681 147.229C178.23 184.58 155.808 214.596 126.919 227.899C125.404 228.597 123.712 227.465 123.712 225.797C123.712 224.867 124.262 224.029 125.105 223.638C152.423 210.985 174.031 182.434 182.201 146.294C182.44 145.236 183.375 144.473 184.46 144.473ZM123.712 2.57405C123.712 0.906075 125.404 -0.224921 126.919 0.47273C155.808 13.7755 178.231 43.792 186.682 81.1439C187.003 82.5625 185.915 83.9002 184.46 83.9002C183.376 83.9002 182.44 83.1374 182.201 82.0795C174.031 45.9383 152.423 17.3858 125.105 4.73247C124.261 4.34186 123.712 3.50346 123.712 2.57405ZM63.1476 2.57297C63.1476 3.50244 62.5982 4.34087 61.7548 4.73147C34.4347 17.3839 12.8253 45.9367 4.65488 82.0795C4.41572 83.1374 3.48024 83.9002 2.39559 83.9002C0.941187 83.9002 -0.147201 82.5625 0.173755 81.1439C8.6252 43.7904 31.0498 13.7734 59.941 0.471552C61.4561 -0.226016 63.1476 0.905001 63.1476 2.57297Z"/>
-      </svg>
-    </div>
+            <div class="title-lockup">
+              <h1>Blood Pressure</h1>
+              <div class="ai-pill"><span>AI</span></div>
+            </div>
 
-    <div class="interaction" id="interaction">
-      <div class="icon-btn" title="Save">
-        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M7.13145 20.2896C6.70436 20.5459 6.10645 20.2896 6.10645 19.7771V4.80523C6.10645 4.1219 6.61895 3.60938 7.30228 3.60938H16.6127C17.296 3.60938 17.8085 4.1219 17.8085 4.80523V19.7771C17.8085 20.2896 17.296 20.5459 16.8689 20.2896L12.0002 16.8729L7.13145 20.2896Z" stroke="white" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <div class="safe-grid" id="safeGrid">
+              <svg viewBox="0 0 187 232" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M2.3966 144.473C3.48123 144.473 4.4167 145.236 4.65587 146.294C12.8265 182.436 34.4351 210.987 61.7543 223.639C62.598 224.03 63.1476 224.869 63.1476 225.798C63.1476 227.467 61.4555 228.598 59.9398 227.901C31.0496 214.599 8.6264 184.582 0.174771 147.23C-0.146203 145.811 0.942185 144.473 2.3966 144.473ZM184.46 144.473C185.914 144.473 187.002 145.811 186.681 147.229C178.23 184.58 155.808 214.596 126.919 227.899C125.404 228.597 123.712 227.465 123.712 225.797C123.712 224.867 124.262 224.029 125.105 223.638C152.423 210.985 174.031 182.434 182.201 146.294C182.44 145.236 183.375 144.473 184.46 144.473ZM123.712 2.57405C123.712 0.906075 125.404 -0.224921 126.919 0.47273C155.808 13.7755 178.231 43.792 186.682 81.1439C187.003 82.5625 185.915 83.9002 184.46 83.9002C183.376 83.9002 182.44 83.1374 182.201 82.0795C174.031 45.9383 152.423 17.3858 125.105 4.73247C124.261 4.34186 123.712 3.50346 123.712 2.57405ZM63.1476 2.57297C63.1476 3.50244 62.5982 4.34087 61.7548 4.73147C34.4347 17.3839 12.8253 45.9367 4.65488 82.0795C4.41572 83.1374 3.48024 83.9002 2.39559 83.9002C0.941187 83.9002 -0.147201 82.5625 0.173755 81.1439C8.6252 43.7904 31.0498 13.7734 59.941 0.471552C61.4561 -0.226016 63.1476 0.905001 63.1476 2.57297Z"/>
+              </svg>
+            </div>
+
+            <div class="interaction">
+              <div class="icon-btn" title="Save">
+                <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M7.13145 20.2896C6.70436 20.5459 6.10645 20.2896 6.10645 19.7771V4.80523C6.10645 4.1219 6.61895 3.60938 7.30228 3.60938H16.6127C17.296 3.60938 17.8085 4.1219 17.8085 4.80523V19.7771C17.8085 20.2896 17.296 20.5459 16.8689 20.2896L12.0002 16.8729L7.13145 20.2896Z" stroke="white" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              </div>
+              <button class="start-btn" id="startBtn"><span>START</span></button>
+              <div class="icon-btn" title="Info">
+                <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 21C16.9706 21 21 16.9706 21 12C21 7.02944 16.9706 3 12 3C7.02944 3 3 7.02944 3 12C3 16.9706 7.02944 21 12 21Z" stroke="white" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M11.25 11.25C11.4489 11.25 11.6397 11.329 11.7803 11.4697C11.921 11.6103 12 11.8011 12 12V15.75C12 15.9489 12.079 16.1397 12.2197 16.2803C12.3603 16.421 12.5511 16.5 12.75 16.5" stroke="white" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M11.625 9C12.2463 9 12.75 8.49632 12.75 7.875C12.75 7.25368 12.2463 6.75 11.625 6.75C11.0037 6.75 10.5 7.25368 10.5 7.875C10.5 8.49632 11.0037 9 11.625 9Z" fill="white"/></svg>
+              </div>
+            </div>
+
+            <div class="caption">Check your Blood Pressure and more by scanning your face</div>
+          </div>
+
+          <div class="stack stack1"></div>
+          <div class="stack stack2"></div>
+        </div>
+
+        <div class="check-types">
+          <div class="selector-mask">
+            <div class="selector">
+              <div class="divider"></div>
+              <div class="item-active">Blood Pressure AI</div>
+              <div class="divider"></div>
+              <div class="item-next">Anaemia AI</div>
+            </div>
+          </div>
+          <div class="caret">
+            <svg viewBox="0 0 9.17361 9.24537" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg"><path d="M3.69055 0.556468C4.05772 -0.185488 5.11589 -0.18549 5.48306 0.556466L9.06859 7.80184C9.39751 8.46649 8.91392 9.24537 8.17234 9.24537H1.00128C0.259689 9.24537 -0.2239 8.46649 0.105018 7.80184L3.69055 0.556468Z" fill="#262626"/></svg>
+          </div>
+        </div>
       </div>
-      <button class="start-btn" id="startBtn"><span>START</span></button>
-      <div class="icon-btn" title="Info">
-        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 21C16.9706 21 21 16.9706 21 12C21 7.02944 16.9706 3 12 3C7.02944 3 3 7.02944 3 12C3 16.9706 7.02944 21 12 21Z" stroke="white" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M11.25 11.25C11.4489 11.25 11.6397 11.329 11.7803 11.4697C11.921 11.6103 12 11.8011 12 12V15.75C12 15.9489 12.079 16.1397 12.2197 16.2803C12.3603 16.421 12.5511 16.5 12.75 16.5" stroke="white" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M11.625 9C12.2463 9 12.75 8.49632 12.75 7.875C12.75 7.25368 12.2463 6.75 11.625 6.75C11.0037 6.75 10.5 7.25368 10.5 7.875C10.5 8.49632 11.0037 9 11.625 9Z" fill="white"/></svg>
+
+      <div class="footer">
+        <button class="explore-btn">
+          <svg viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M16.6675 7.49959L10.0008 14.1663L3.33415 7.49959" stroke="#111111" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <span>Explore</span>
+        </button>
       </div>
     </div>
-
-    <div class="stop-btn" id="stopBtn">&times;</div>
-
-    <div class="caption" id="caption">Check your Blood Pressure and more by scanning your face</div>
   </div>
 
-  <div class="hint" id="hint">Tap START and allow camera access</div>
+  <div class="err" id="err"></div>
 
 <script type="module">
 import { FaceLandmarker, FilesetResolver } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.12";
 
-// ---------- geometry (card space) ----------
+// ---------- geometry (blue camera section coordinate space) ----------
 const CARD_W = 342, CARD_H = 570;
 const G = { x: 76.5, y: 127, w: 187, h: 232 };
-const GRID = { cx: G.x + G.w / 2, cy: G.y + G.h / 2, rx: G.w / 2, ry: G.h / 2 };
+const GRID = { cx: G.x + G.w / 2, cy: G.y + G.h / 2 };
 
-// alignment tolerances
-const MIN_H = 150, MAX_H = 275;          // acceptable face height (card px) => distance
-const TOL_X = 52, TOL_Y = 62;            // how far off-centre is allowed
-const HOLD_MS = 600;                     // must stay aligned this long to begin
+const MIN_H = 150, MAX_H = 275;   // acceptable face height (card px) => distance
+const TOL_X = 52, TOL_Y = 62;     // off-centre allowance
+const HOLD_MS = 180;              // brief debounce before showing the mesh
 
 // ---------- elements ----------
-const card = document.getElementById("card");
+const stage = document.getElementById("stage");
 const video = document.getElementById("video");
 const canvas = document.getElementById("mesh");
 const ctx = canvas.getContext("2d");
-const captionEl = document.getElementById("caption");
-const hintEl = document.getElementById("hint");
+const safeGrid = document.getElementById("safeGrid");
+const errEl = document.getElementById("err");
 
-let faceLandmarker, mode = "idle", running = false, lastVideoTime = -1;
-let alignedSince = 0, scanStart = -1e9;
+let faceLandmarker, running = false, lastVideoTime = -1;
+let alignedSince = 0, active = false, prevActive = false;
 
 // ---------- mesh engine state ----------
-const densities = [{ step: 10 }, { step: 6 }, { step: 4 }];
-const densityIndex = 0;
-const keptCache = {};
+const STEP = 10, keptCache = {};
 let washStart = -1e9, nextWashAt = 0;
 const WASH_MS = 4200;
 const rand = (a, b) => a + Math.random() * (b - a);
 const SCAN_POINTS = [1, 10, 152, 168, 234, 454, 33, 263, 13];
-let scanOriginIdx = 1;
+let scanOriginIdx = 1, lastFaceSeen = 0;
 
-// ---------- setup ----------
+// ---------- responsive scale so the whole card fits the screen ----------
+function fitStage() {
+  const card = stage.firstElementChild.getBoundingClientRect();
+  const cw = stage.firstElementChild.offsetWidth, ch = stage.firstElementChild.offsetHeight;
+  const s = Math.min(1, (window.innerWidth - 24) / cw, (window.innerHeight - 24) / ch);
+  stage.style.transform = `scale(${s})`;
+}
 function sizeCanvas() {
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
-  canvas.width = CARD_W * dpr;
-  canvas.height = CARD_H * dpr;
+  canvas.width = CARD_W * dpr; canvas.height = CARD_H * dpr;
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 }
-sizeCanvas();
 
 async function createLandmarker() {
   const resolver = await FilesetResolver.forVisionTasks(
@@ -228,67 +274,43 @@ async function createLandmarker() {
       modelAssetPath: "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task",
       delegate: "GPU"
     },
-    runningMode: "VIDEO",
-    numFaces: 1
+    runningMode: "VIDEO", numFaces: 1
   });
 }
 
 async function startCamera() {
-  hintEl.textContent = "Requesting camera…";
+  errEl.style.display = "none";
   try {
     const stream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: "user", width: { ideal: 1280 }, height: { ideal: 720 } },
-      audio: false
+      video: { facingMode: "user", width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false
     });
     video.srcObject = stream;
     await video.play();
     if (!faceLandmarker) await createLandmarker();
-    setMode("camera");
     video.classList.add("on");
     running = true;
-    hintEl.textContent = "";
     requestAnimationFrame(loop);
   } catch (e) {
-    hintEl.textContent = "Camera blocked — allow access and try again";
+    errEl.textContent = "Camera blocked — allow access and tap START again";
+    errEl.style.display = "block";
     console.error(e);
   }
-}
-
-function stopCamera() {
-  running = false;
-  const s = video.srcObject;
-  if (s) s.getTracks().forEach(t => t.stop());
-  video.srcObject = null;
-  video.classList.remove("on");
-  setMode("idle");
-  ctx.clearRect(0, 0, CARD_W, CARD_H);
-  hintEl.textContent = "Tap START and allow camera access";
-}
-
-function setMode(m) {
-  mode = m;
-  card.classList.toggle("camera", m === "camera");
-  card.classList.toggle("scanning", m === "scanning");
-  if (m === "idle") captionEl.textContent = "Check your Blood Pressure and more by scanning your face";
 }
 
 // ---------- cover-fit mapping: normalized video coords -> card coords ----------
 function coverMap(nx, ny) {
   const vw = video.videoWidth || 1280, vh = video.videoHeight || 720;
   const vAsp = vw / vh, cAsp = CARD_W / CARD_H;
-  let x, y;
-  if (vAsp > cAsp) {                 // video wider -> fit height, crop sides
+  if (vAsp > cAsp) {
     const scale = CARD_H / vh, dispW = vw * scale, offX = (dispW - CARD_W) / 2;
-    x = nx * dispW - offX; y = ny * CARD_H;
-  } else {                            // video taller -> fit width, crop top/bottom
+    return [nx * dispW - offX, ny * CARD_H];
+  } else {
     const scale = CARD_W / vw, dispH = vh * scale, offY = (dispH - CARD_H) / 2;
-    x = nx * CARD_W; y = ny * dispH - offY;
+    return [nx * CARD_W, ny * dispH - offY];
   }
-  return [x, y];
 }
 
-// ---------- alignment check against the Safe Grid ----------
-function checkAlignment(landmarks) {
+function isAligned(landmarks) {
   let nMinX = 1, nMinY = 1, nMaxX = 0, nMaxY = 0;
   for (const p of landmarks) {
     if (p.x < nMinX) nMinX = p.x; if (p.y < nMinY) nMinY = p.y;
@@ -297,14 +319,12 @@ function checkAlignment(landmarks) {
   const [x0, y0] = coverMap(nMinX, nMinY);
   const [x1, y1] = coverMap(nMaxX, nMaxY);
   const fcx = (x0 + x1) / 2, fcy = (y0 + y1) / 2, fh = Math.abs(y1 - y0);
-  if (fh < MIN_H) return { ok: false, msg: "Move a little closer" };
-  if (fh > MAX_H) return { ok: false, msg: "Move back slightly" };
-  if (Math.abs(fcx - GRID.cx) > TOL_X || Math.abs(fcy - GRID.cy) > TOL_Y)
-    return { ok: false, msg: "Centre your face in the frame" };
-  return { ok: true, msg: "Hold still…" };
+  if (fh < MIN_H || fh > MAX_H) return false;
+  if (Math.abs(fcx - GRID.cx) > TOL_X || Math.abs(fcy - GRID.cy) > TOL_Y) return false;
+  return true;
 }
 
-// ---------- main loop ----------
+// ---------- loop ----------
 function loop() {
   if (!running) return;
   if (video.currentTime !== lastVideoTime) {
@@ -319,26 +339,20 @@ function tick(res) {
   ctx.clearRect(0, 0, CARD_W, CARD_H);
   const now = performance.now();
   const has = res.faceLandmarks && res.faceLandmarks.length > 0;
+  const ok = has && isAligned(res.faceLandmarks[0]);
 
-  if (mode === "camera") {
-    if (!has) { captionEl.textContent = "Position your face in the frame"; setGrid("idle"); alignedSince = 0; return; }
-    const a = checkAlignment(res.faceLandmarks[0]);
-    captionEl.textContent = a.msg;
-    setGrid(a.ok ? "aligned" : "idle");
-    if (a.ok) {
-      if (!alignedSince) alignedSince = now;
-      if (now - alignedSince >= HOLD_MS) beginScan(now);
-    } else {
-      alignedSince = 0;
-    }
-  } else if (mode === "scanning") {
-    if (!has) {
-      if (now - lastFaceSeen > 900) { setMode("camera"); alignedSince = 0; }
-      return;
-    }
-    lastFaceSeen = now;
-    captionEl.textContent = "Scanning your face…";
-    // wash scheduling
+  if (ok) {
+    if (!alignedSince) alignedSince = now;
+    active = (now - alignedSince) >= HOLD_MS;
+  } else {
+    alignedSince = 0; active = false;
+  }
+
+  // Safe Grid dims to 30% while the face is in place, returns to original otherwise
+  document.documentElement.style.setProperty("--grid-opacity", active ? "0.3" : "0.6");
+
+  if (active) {
+    if (!prevActive) { washStart = -1e9; nextWashAt = now + 800; } // fresh scan
     if (now >= nextWashAt) {
       washStart = now;
       scanOriginIdx = SCAN_POINTS[Math.floor(Math.random() * SCAN_POINTS.length)];
@@ -346,22 +360,10 @@ function tick(res) {
     }
     drawMesh(res.faceLandmarks[0], now);
   }
-}
-let lastFaceSeen = 0;
-
-function beginScan(now) {
-  setMode("scanning");
-  scanStart = now;
-  lastFaceSeen = now;
-  nextWashAt = now + 1200;   // first wash shortly after the scan begins
+  prevActive = active;
 }
 
-function setGrid(state) {
-  document.documentElement.style.setProperty("--grid-color",
-    state === "aligned" ? "#46e6b0" : "rgba(255,255,255,0.6)");
-}
-
-// ---------- mesh drawing (card space) ----------
+// ---------- mesh (card space) ----------
 function getKept(step, count) {
   const key = step + "_" + count;
   if (keptCache[key]) return keptCache[key];
@@ -369,9 +371,7 @@ function getKept(step, count) {
   const oval = FaceLandmarker.FACE_LANDMARKS_FACE_OVAL.map(c => c.start);
   for (let j = 0; j < oval.length; j += 2) set.add(oval[j]);
   for (let i = 0; i < count; i++) if (i % step === 0) set.add(i);
-  const arr = [...set].filter(i => i < count);
-  keptCache[key] = arr;
-  return arr;
+  const arr = [...set].filter(i => i < count); keptCache[key] = arr; return arr;
 }
 function inCircle(p, a, b, c) {
   const d = 2 * (a.x * (b.y - c.y) + b.x * (c.y - a.y) + c.x * (a.y - b.y));
@@ -383,12 +383,10 @@ function inCircle(p, a, b, c) {
   return (p.x - ux) ** 2 + (p.y - uy) ** 2 < r2 - 1e-9;
 }
 function triangulate(pts) {
-  const n = pts.length;
-  if (n < 3) return [];
+  const n = pts.length; if (n < 3) return [];
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
   for (const p of pts) { if (p.x < minX) minX = p.x; if (p.y < minY) minY = p.y; if (p.x > maxX) maxX = p.x; if (p.y > maxY) maxY = p.y; }
-  const dmax = Math.max(maxX - minX, maxY - minY) || 1;
-  const mx = (minX + maxX) / 2, my = (minY + maxY) / 2;
+  const dmax = Math.max(maxX - minX, maxY - minY) || 1, mx = (minX + maxX) / 2, my = (minY + maxY) / 2;
   const all = pts.concat([{ x: mx - 20 * dmax, y: my - dmax }, { x: mx, y: my + 20 * dmax }, { x: mx + 20 * dmax, y: my - dmax }]);
   let tris = [[n, n + 1, n + 2]];
   for (let i = 0; i < n; i++) {
@@ -409,16 +407,14 @@ function triangulate(pts) {
 }
 
 function drawMesh(landmarks, now) {
-  const step = densities[densityIndex].step;
-  const kept = getKept(step, landmarks.length);
+  const kept = getKept(STEP, landmarks.length);
   const rawPts = kept.map(i => { const [x, y] = coverMap(landmarks[i].x, landmarks[i].y); return { x, y }; });
 
   let bMinX = Infinity, bMinY = Infinity, bMaxX = -Infinity, bMaxY = -Infinity;
   for (const p of rawPts) { if (p.x < bMinX) bMinX = p.x; if (p.y < bMinY) bMinY = p.y; if (p.x > bMaxX) bMaxX = p.x; if (p.y > bMaxY) bMaxY = p.y; }
   const faceDiag = Math.hypot(bMaxX - bMinX, bMaxY - bMinY) || 1;
 
-  const minD2 = (faceDiag * 0.05) ** 2;
-  const pts = [];
+  const minD2 = (faceDiag * 0.05) ** 2, pts = [];
   for (const p of rawPts) {
     let ok = true;
     for (const q of pts) { const dx = p.x - q.x, dy = p.y - q.y; if (dx * dx + dy * dy < minD2) { ok = false; break; } }
@@ -434,7 +430,6 @@ function drawMesh(landmarks, now) {
 
   const origin = landmarks[scanOriginIdx] || landmarks[1];
   const [ox, oy] = coverMap(origin.x, origin.y);
-
   const washP = (now - washStart) / WASH_MS;
   const washing = washP >= 0 && washP <= 1;
   const band = 0.34, span = 1.25;
@@ -447,9 +442,7 @@ function drawMesh(landmarks, now) {
     const amount = washing ? Math.max(0, 1 - Math.abs(s)) : 0;
     const tt = Math.min(1, Math.max(0, (s + 1) / 2));
     const hue = 200 + tt * 125;
-    const sat = 70 + amount * 30;
-    const light = 100 - amount * 38;
-    const alpha = 0.4 + amount * 0.6;
+    const sat = 70 + amount * 30, light = 100 - amount * 38, alpha = 0.4 + amount * 0.6;
     ctx.lineWidth = 0.6 + amount * 1.0;
     ctx.strokeStyle = `hsla(${hue}, ${sat}%, ${light}%, ${alpha})`;
     ctx.beginPath(); ctx.moveTo(pts[a].x, pts[a].y); ctx.lineTo(pts[b].x, pts[b].y); ctx.stroke();
@@ -467,11 +460,12 @@ function drawMesh(landmarks, now) {
   }
 }
 
-// ---------- wire up ----------
+// ---------- boot ----------
 document.getElementById("startBtn").addEventListener("click", startCamera);
-document.getElementById("stopBtn").addEventListener("click", stopCamera);
-window.addEventListener("resize", sizeCanvas);
-createLandmarker().catch(() => {}); // warm up the model early
+window.addEventListener("resize", () => { sizeCanvas(); fitStage(); });
+sizeCanvas();
+fitStage();
+createLandmarker().catch(() => {});
 </script>
 </body>
 </html>
