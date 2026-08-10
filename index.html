@@ -299,7 +299,7 @@ function render(result) {
 
   if (!result.faceLandmarks || result.faceLandmarks.length === 0) { faceWasPresent = false; return; }
   const now = performance.now();
-  if (!faceWasPresent) { faceWasPresent = true; nextWashAt = now + rand(15000, 45000); }
+  if (!faceWasPresent) { faceWasPresent = true; nextWashAt = now + 3000; } // first wash ~3s after lock-on
   // fire a colour wash on schedule from a random face point, then queue the next one
   if (now >= nextWashAt) {
     washStart = now;
@@ -318,7 +318,27 @@ function render(result) {
   for (const landmarks of result.faceLandmarks) {
     const step = densities[densityIndex].step;
     const kept = getKept(step, landmarks.length);
-    const pts = kept.map(i => ({ x: landmarks[i].x * W, y: landmarks[i].y * H }));
+    const rawPts = kept.map(i => ({ x: landmarks[i].x * W, y: landmarks[i].y * H }));
+
+    // face size, used for spacing + normalising the radiating distance
+    let bMinX = Infinity, bMinY = Infinity, bMaxX = -Infinity, bMaxY = -Infinity;
+    for (const p of rawPts) {
+      if (p.x < bMinX) bMinX = p.x; if (p.y < bMinY) bMinY = p.y;
+      if (p.x > bMaxX) bMaxX = p.x; if (p.y > bMaxY) bMaxY = p.y;
+    }
+    const faceDiag = Math.hypot(bMaxX - bMinX, bMaxY - bMinY) || 1;
+
+    // enforce a minimum spacing so dense regions (nostrils, lips) don't clump
+    const minD2 = (faceDiag * 0.05) ** 2;
+    const pts = [];
+    for (const p of rawPts) {
+      let ok = true;
+      for (const q of pts) {
+        const dx = p.x - q.x, dy = p.y - q.y;
+        if (dx * dx + dy * dy < minD2) { ok = false; break; }
+      }
+      if (ok) pts.push(p);
+    }
 
     // collect unique edges of the low-poly mesh
     const tris = triangulate(pts);
@@ -333,14 +353,6 @@ function render(result) {
         edges.push([a, b]);
       }
     }
-
-    // face size, used to normalise the radiating distance
-    let bMinX = Infinity, bMinY = Infinity, bMaxX = -Infinity, bMaxY = -Infinity;
-    for (const p of pts) {
-      if (p.x < bMinX) bMinX = p.x; if (p.y < bMinY) bMinY = p.y;
-      if (p.x > bMaxX) bMaxX = p.x; if (p.y > bMaxY) bMaxY = p.y;
-    }
-    const faceDiag = Math.hypot(bMaxX - bMinX, bMaxY - bMinY) || 1;
 
     // point this wash radiates from (a landmark, so the origin tracks the face)
     const origin = landmarks[scanOriginIdx] || landmarks[1];
@@ -379,9 +391,9 @@ function render(result) {
     drawUtils.drawConnectors(landmarks, FaceLandmarker.FACE_LANDMARKS_FACE_OVAL,
       { color: "rgba(255,255,255,0.28)", lineWidth: 0.6 });
 
-    // white tracking dots at every mesh node — motion-capture style markers
+    // tracking dots at every mesh node — motion-capture style markers (soft cyan, lower opacity)
     const dotR = Math.max(1.2, faceDiag * 0.008);
-    ctx.fillStyle = "rgba(255,255,255,0.95)";
+    ctx.fillStyle = "rgba(140, 225, 255, 0.6)";
     for (const p of pts) {
       ctx.beginPath();
       ctx.arc(p.x, p.y, dotR, 0, Math.PI * 2);
