@@ -108,7 +108,6 @@
   <div id="controls">
     <button class="chip" id="toggleVideo" aria-pressed="true">Camera</button>
     <button class="chip" id="cycleDensity">Detail: Simple</button>
-    <button class="chip" id="toggleGlow" aria-pressed="true">Glow</button>
   </div>
 
   <div id="startScreen">
@@ -138,7 +137,6 @@ let drawUtils;
 
 // ---- visual state ----
 let showVideo = true;
-let glow = true;
 
 // mesh density — fewer kept points => bigger, simpler triangles
 const densities = [
@@ -304,16 +302,12 @@ function render(result) {
   if (now >= nextWashAt) {
     washStart = now;
     scanOriginIdx = SCAN_POINTS[Math.floor(Math.random() * SCAN_POINTS.length)];
-    nextWashAt = now + WASH_MS + rand(15000, 45000);
+    nextWashAt = now + WASH_MS + rand(3000, 7000);
   }
 
   const W = canvas.width, H = canvas.height;
 
   ctx.save();
-  if (glow) {
-    ctx.shadowColor = "#ffffff";
-    ctx.shadowBlur = 6;
-  }
 
   for (const landmarks of result.faceLandmarks) {
     const step = densities[densityIndex].step;
@@ -376,7 +370,6 @@ function render(result) {
       const sat = 70 + amount * 30;                        // vivid where the band passes
       const light = 100 - amount * 38;                     // white -> bright colour
       const alpha = 0.4 + amount * 0.6;
-      if (glow) ctx.shadowColor = amount > 0.04 ? `hsl(${hue}, 100%, 62%)` : "#ffffff";
       ctx.lineWidth = 0.6 + amount * 1.0;                  // band swells a touch as it flows
       ctx.strokeStyle = `hsla(${hue}, ${sat}%, ${light}%, ${alpha})`;
       ctx.beginPath();
@@ -384,7 +377,6 @@ function render(result) {
       ctx.lineTo(pts[b].x, pts[b].y);
       ctx.stroke();
     }
-    if (glow) ctx.shadowColor = "#ffffff";                 // restore neutral glow for lines/dots
 
     // feature accents — eyes, lips, outline (thin & subtle, no longer a dominant boundary)
     const feat = { color: "rgba(255,255,255,0.4)", lineWidth: 0.6 };
@@ -426,10 +418,6 @@ document.getElementById("toggleVideo").addEventListener("click", (e) => {
 document.getElementById("cycleDensity").addEventListener("click", (e) => {
   densityIndex = (densityIndex + 1) % densities.length;
   e.currentTarget.textContent = "Detail: " + densities[densityIndex].label;
-});
-document.getElementById("toggleGlow").addEventListener("click", (e) => {
-  glow = !glow;
-  e.currentTarget.setAttribute("aria-pressed", String(glow));
 });
 
 // ---- boot ----
