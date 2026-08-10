@@ -352,7 +352,7 @@ function render(result) {
     const band = 0.34;                                    // half-width of the ring (face-normalised)
     const span = 1.25;                                    // how far the ring travels outward
     const front = washP * (span + band * 2) - band;       // ring radius grows over the wash
-    ctx.lineWidth = 1.2;
+    ctx.lineWidth = 0.6;
     for (const [a, b] of edges) {
       const mx = (pts[a].x + pts[b].x) / 2;
       const my = (pts[a].y + pts[b].y) / 2;
@@ -363,7 +363,7 @@ function render(result) {
       const hue = 225 + t * 75;                            // royal blue (225) -> magenta (300)
       const sat = amount * 92;
       const light = 100 - amount * 45;                     // white -> colour
-      const alpha = 0.6 + amount * 0.4;
+      const alpha = 0.4 + amount * 0.5;
       ctx.strokeStyle = `hsla(${hue}, ${sat}%, ${light}%, ${alpha})`;
       ctx.beginPath();
       ctx.moveTo(pts[a].x, pts[a].y);
@@ -371,13 +371,22 @@ function render(result) {
       ctx.stroke();
     }
 
-    // feature accents — eyes, lips, outline (kept white)
-    const feat = { color: "rgba(255,255,255,0.85)", lineWidth: 1.3 };
+    // feature accents — eyes, lips, outline (thin & subtle, no longer a dominant boundary)
+    const feat = { color: "rgba(255,255,255,0.4)", lineWidth: 0.6 };
     drawUtils.drawConnectors(landmarks, FaceLandmarker.FACE_LANDMARKS_RIGHT_EYE, feat);
     drawUtils.drawConnectors(landmarks, FaceLandmarker.FACE_LANDMARKS_LEFT_EYE, feat);
     drawUtils.drawConnectors(landmarks, FaceLandmarker.FACE_LANDMARKS_LIPS, feat);
     drawUtils.drawConnectors(landmarks, FaceLandmarker.FACE_LANDMARKS_FACE_OVAL,
-      { color: "rgba(255,255,255,0.9)", lineWidth: 1.6 });
+      { color: "rgba(255,255,255,0.28)", lineWidth: 0.6 });
+
+    // white tracking dots at every mesh node — motion-capture style markers
+    const dotR = Math.max(1.2, faceDiag * 0.008);
+    ctx.fillStyle = "rgba(255,255,255,0.95)";
+    for (const p of pts) {
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, dotR, 0, Math.PI * 2);
+      ctx.fill();
+    }
   }
   ctx.restore();
 }
