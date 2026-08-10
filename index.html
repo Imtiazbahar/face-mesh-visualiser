@@ -372,16 +372,19 @@ function render(result) {
       const s = (d - front) / band;                       // -1..1 inside the ring
       const amount = washing ? Math.max(0, 1 - Math.abs(s)) : 0;
       const t = Math.min(1, Math.max(0, (s + 1) / 2));     // inner -> outer edge of the ring
-      const hue = 225 + t * 75;                            // royal blue (225) -> magenta (300)
-      const sat = amount * 92;
-      const light = 100 - amount * 45;                     // white -> colour
-      const alpha = 0.4 + amount * 0.5;
+      const hue = 200 + t * 125;                           // bright sky blue (200) -> bright pink (325)
+      const sat = 70 + amount * 30;                        // vivid where the band passes
+      const light = 100 - amount * 38;                     // white -> bright colour
+      const alpha = 0.4 + amount * 0.6;
+      if (glow) ctx.shadowColor = amount > 0.04 ? `hsl(${hue}, 100%, 62%)` : "#ffffff";
+      ctx.lineWidth = 0.6 + amount * 1.0;                  // band swells a touch as it flows
       ctx.strokeStyle = `hsla(${hue}, ${sat}%, ${light}%, ${alpha})`;
       ctx.beginPath();
       ctx.moveTo(pts[a].x, pts[a].y);
       ctx.lineTo(pts[b].x, pts[b].y);
       ctx.stroke();
     }
+    if (glow) ctx.shadowColor = "#ffffff";                 // restore neutral glow for lines/dots
 
     // feature accents — eyes, lips, outline (thin & subtle, no longer a dominant boundary)
     const feat = { color: "rgba(255,255,255,0.4)", lineWidth: 0.6 };
@@ -397,6 +400,17 @@ function render(result) {
     for (const p of pts) {
       ctx.beginPath();
       ctx.arc(p.x, p.y, dotR, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // the origin marker flares bright as a wash ignites, then settles back to cyan
+    const originFlash = washing ? Math.max(0, 1 - washP / 0.45) : 0;
+    if (originFlash > 0) {
+      const cr = Math.round(140 + (255 - 140) * originFlash);
+      const cg = Math.round(225 + (255 - 225) * originFlash);
+      ctx.fillStyle = `rgba(${cr}, ${cg}, 255, ${0.6 + originFlash * 0.4})`;
+      ctx.beginPath();
+      ctx.arc(ox, oy, dotR * (1 + originFlash * 2), 0, Math.PI * 2);
       ctx.fill();
     }
   }
