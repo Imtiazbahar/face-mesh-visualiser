@@ -1,0 +1,477 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+<title>Blood Pressure — Face Scan</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Ubuntu:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --card-w: 342px;
+    --card-h: 570px;
+    --blue: #1500ff;
+    --grid-color: rgba(255,255,255,0.6);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  html, body {
+    height: 100%;
+    font-family: "Ubuntu", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+    background: #eef0f4;
+    display: flex; align-items: center; justify-content: center;
+    overflow: hidden;
+  }
+  @media (prefers-color-scheme: dark) { body { background: #0f1115; } }
+
+  /* ---------------- CARD ---------------- */
+  .card {
+    position: relative;
+    width: var(--card-w);
+    height: var(--card-h);
+    border-radius: 24px;
+    border: 2px solid #fff;
+    background: var(--blue);
+    overflow: hidden;
+    box-shadow: 0 4px 24px 0 rgba(17,17,17,0.20);
+    isolation: isolate;
+  }
+
+  /* live camera + mesh, both mirrored like a selfie */
+  #video, #mesh {
+    position: absolute; inset: 0;
+    width: 100%; height: 100%;
+    transform: scaleX(-1);
+  }
+  #video { object-fit: cover; opacity: 0; transition: opacity .5s ease; z-index: 1; }
+  #video.on { opacity: 1; }
+  #mesh { z-index: 2; pointer-events: none; }
+
+  /* darkening at the base for legibility (the Figma "Base" gradient) */
+  .base-fade {
+    position: absolute; left: 0; right: 0; bottom: 0; height: 240px; z-index: 3;
+    background: linear-gradient(to bottom, rgba(0,0,0,0) 0%, rgba(0,0,0,0.85) 78%, #000 100%);
+    pointer-events: none;
+  }
+  /* a soft blue veil over the video so it stays on-brand while positioning */
+  .brand-veil {
+    position: absolute; inset: 0; z-index: 2; pointer-events: none;
+    background: radial-gradient(120% 80% at 50% 30%, rgba(21,0,255,0.28), rgba(21,0,255,0.55));
+    opacity: 0; transition: opacity .5s ease;
+  }
+  .card.camera .brand-veil { opacity: 1; }
+  .card.scanning .brand-veil { opacity: .5; }
+
+  /* title lockup */
+  .title-lockup {
+    position: absolute; left: 27px; top: 27px; width: 182px; z-index: 6;
+    display: flex; flex-direction: column; gap: 12px;
+  }
+  .title-lockup h1 {
+    font-weight: 400; font-size: 30px; line-height: 32px; letter-spacing: -0.5px;
+    color: #fff; text-shadow: 0 0 13px rgba(0,0,0,0.29);
+  }
+  .ai-pill {
+    width: 28px; height: 28px; border-radius: 50%; background: #ff4c61;
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 2px 8px 0 rgba(17,17,17,0.06);
+  }
+  .ai-pill span { font-weight: 500; font-size: 15.75px; color: #fff; letter-spacing: -0.37px; }
+
+  /* safe grid oval */
+  .safe-grid {
+    position: absolute; left: 76.5px; top: 127px; width: 187px; height: 232px; z-index: 5;
+    color: var(--grid-color);
+    transition: color .35s ease, opacity .5s ease, transform .5s ease;
+    pointer-events: none;
+  }
+  .safe-grid svg { width: 100%; height: 100%; display: block; }
+  .safe-grid svg path { fill: currentColor; }
+  .card.scanning .safe-grid { opacity: 0; transform: scale(1.04); }
+
+  /* caption */
+  .caption {
+    position: absolute; left: 50%; bottom: 34px; transform: translateX(-50%); z-index: 6;
+    width: 240px; text-align: center; color: #fff;
+    font-size: 14px; line-height: 20px; font-weight: 400;
+    text-shadow: 0 1px 6px rgba(0,0,0,0.4);
+    transition: opacity .3s ease;
+  }
+
+  /* main interaction row (idle only) */
+  .interaction {
+    position: absolute; left: 50%; bottom: 92px; transform: translateX(-50%); z-index: 6;
+    display: flex; align-items: center; gap: 16px;
+    transition: opacity .35s ease;
+  }
+  .card.camera .interaction, .card.scanning .interaction { opacity: 0; pointer-events: none; }
+
+  .icon-btn {
+    width: 44px; height: 44px; border-radius: 50%;
+    background: rgba(17,17,17,0.6); backdrop-filter: blur(11px);
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 4px 10px 0 rgba(0,0,0,0.04); cursor: pointer;
+  }
+  .icon-btn svg { width: 24px; height: 24px; display: block; }
+
+  .start-btn {
+    width: 76px; height: 76px; border-radius: 50%; cursor: pointer;
+    background: linear-gradient(to bottom, #fc5f2b, #ea0e3e);
+    border: 1.9px solid rgba(255,255,255,0.6);
+    box-shadow: 0 4px 24px 0 rgba(0,0,0,0.2);
+    display: flex; align-items: center; justify-content: center;
+    transition: transform .12s ease;
+    padding: 5.7px;
+  }
+  .start-btn:active { transform: scale(0.95); }
+  .start-btn span { font-weight: 500; font-size: 15px; letter-spacing: 2px; color: #fff; }
+
+  /* stop (×) shown while camera runs */
+  .stop-btn {
+    position: absolute; top: 20px; right: 20px; z-index: 7;
+    width: 34px; height: 34px; border-radius: 50%;
+    background: rgba(17,17,17,0.5); backdrop-filter: blur(8px);
+    display: none; align-items: center; justify-content: center; cursor: pointer;
+    color: #fff; font-size: 20px; line-height: 1;
+  }
+  .card.camera .stop-btn, .card.scanning .stop-btn { display: flex; }
+
+  .hint {
+    position: fixed; bottom: 18px; left: 0; right: 0; text-align: center;
+    font-size: 12px; color: #8a93a3; z-index: 20;
+  }
+</style>
+</head>
+<body>
+  <div class="card" id="card">
+    <video id="video" playsinline autoplay muted></video>
+    <canvas id="mesh"></canvas>
+    <div class="brand-veil"></div>
+    <div class="base-fade"></div>
+
+    <div class="title-lockup">
+      <h1>Blood Pressure</h1>
+      <div class="ai-pill"><span>AI</span></div>
+    </div>
+
+    <div class="safe-grid" id="safeGrid">
+      <svg viewBox="0 0 187 232" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M2.3966 144.473C3.48123 144.473 4.4167 145.236 4.65587 146.294C12.8265 182.436 34.4351 210.987 61.7543 223.639C62.598 224.03 63.1476 224.869 63.1476 225.798C63.1476 227.467 61.4555 228.598 59.9398 227.901C31.0496 214.599 8.6264 184.582 0.174771 147.23C-0.146203 145.811 0.942185 144.473 2.3966 144.473ZM184.46 144.473C185.914 144.473 187.002 145.811 186.681 147.229C178.23 184.58 155.808 214.596 126.919 227.899C125.404 228.597 123.712 227.465 123.712 225.797C123.712 224.867 124.262 224.029 125.105 223.638C152.423 210.985 174.031 182.434 182.201 146.294C182.44 145.236 183.375 144.473 184.46 144.473ZM123.712 2.57405C123.712 0.906075 125.404 -0.224921 126.919 0.47273C155.808 13.7755 178.231 43.792 186.682 81.1439C187.003 82.5625 185.915 83.9002 184.46 83.9002C183.376 83.9002 182.44 83.1374 182.201 82.0795C174.031 45.9383 152.423 17.3858 125.105 4.73247C124.261 4.34186 123.712 3.50346 123.712 2.57405ZM63.1476 2.57297C63.1476 3.50244 62.5982 4.34087 61.7548 4.73147C34.4347 17.3839 12.8253 45.9367 4.65488 82.0795C4.41572 83.1374 3.48024 83.9002 2.39559 83.9002C0.941187 83.9002 -0.147201 82.5625 0.173755 81.1439C8.6252 43.7904 31.0498 13.7734 59.941 0.471552C61.4561 -0.226016 63.1476 0.905001 63.1476 2.57297Z"/>
+      </svg>
+    </div>
+
+    <div class="interaction" id="interaction">
+      <div class="icon-btn" title="Save">
+        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M7.13145 20.2896C6.70436 20.5459 6.10645 20.2896 6.10645 19.7771V4.80523C6.10645 4.1219 6.61895 3.60938 7.30228 3.60938H16.6127C17.296 3.60938 17.8085 4.1219 17.8085 4.80523V19.7771C17.8085 20.2896 17.296 20.5459 16.8689 20.2896L12.0002 16.8729L7.13145 20.2896Z" stroke="white" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </div>
+      <button class="start-btn" id="startBtn"><span>START</span></button>
+      <div class="icon-btn" title="Info">
+        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 21C16.9706 21 21 16.9706 21 12C21 7.02944 16.9706 3 12 3C7.02944 3 3 7.02944 3 12C3 16.9706 7.02944 21 12 21Z" stroke="white" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M11.25 11.25C11.4489 11.25 11.6397 11.329 11.7803 11.4697C11.921 11.6103 12 11.8011 12 12V15.75C12 15.9489 12.079 16.1397 12.2197 16.2803C12.3603 16.421 12.5511 16.5 12.75 16.5" stroke="white" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M11.625 9C12.2463 9 12.75 8.49632 12.75 7.875C12.75 7.25368 12.2463 6.75 11.625 6.75C11.0037 6.75 10.5 7.25368 10.5 7.875C10.5 8.49632 11.0037 9 11.625 9Z" fill="white"/></svg>
+      </div>
+    </div>
+
+    <div class="stop-btn" id="stopBtn">&times;</div>
+
+    <div class="caption" id="caption">Check your Blood Pressure and more by scanning your face</div>
+  </div>
+
+  <div class="hint" id="hint">Tap START and allow camera access</div>
+
+<script type="module">
+import { FaceLandmarker, FilesetResolver } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.12";
+
+// ---------- geometry (card space) ----------
+const CARD_W = 342, CARD_H = 570;
+const G = { x: 76.5, y: 127, w: 187, h: 232 };
+const GRID = { cx: G.x + G.w / 2, cy: G.y + G.h / 2, rx: G.w / 2, ry: G.h / 2 };
+
+// alignment tolerances
+const MIN_H = 150, MAX_H = 275;          // acceptable face height (card px) => distance
+const TOL_X = 52, TOL_Y = 62;            // how far off-centre is allowed
+const HOLD_MS = 600;                     // must stay aligned this long to begin
+
+// ---------- elements ----------
+const card = document.getElementById("card");
+const video = document.getElementById("video");
+const canvas = document.getElementById("mesh");
+const ctx = canvas.getContext("2d");
+const captionEl = document.getElementById("caption");
+const hintEl = document.getElementById("hint");
+
+let faceLandmarker, mode = "idle", running = false, lastVideoTime = -1;
+let alignedSince = 0, scanStart = -1e9;
+
+// ---------- mesh engine state ----------
+const densities = [{ step: 10 }, { step: 6 }, { step: 4 }];
+const densityIndex = 0;
+const keptCache = {};
+let washStart = -1e9, nextWashAt = 0;
+const WASH_MS = 4200;
+const rand = (a, b) => a + Math.random() * (b - a);
+const SCAN_POINTS = [1, 10, 152, 168, 234, 454, 33, 263, 13];
+let scanOriginIdx = 1;
+
+// ---------- setup ----------
+function sizeCanvas() {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  canvas.width = CARD_W * dpr;
+  canvas.height = CARD_H * dpr;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+sizeCanvas();
+
+async function createLandmarker() {
+  const resolver = await FilesetResolver.forVisionTasks(
+    "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.12/wasm");
+  faceLandmarker = await FaceLandmarker.createFromOptions(resolver, {
+    baseOptions: {
+      modelAssetPath: "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task",
+      delegate: "GPU"
+    },
+    runningMode: "VIDEO",
+    numFaces: 1
+  });
+}
+
+async function startCamera() {
+  hintEl.textContent = "Requesting camera…";
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: "user", width: { ideal: 1280 }, height: { ideal: 720 } },
+      audio: false
+    });
+    video.srcObject = stream;
+    await video.play();
+    if (!faceLandmarker) await createLandmarker();
+    setMode("camera");
+    video.classList.add("on");
+    running = true;
+    hintEl.textContent = "";
+    requestAnimationFrame(loop);
+  } catch (e) {
+    hintEl.textContent = "Camera blocked — allow access and try again";
+    console.error(e);
+  }
+}
+
+function stopCamera() {
+  running = false;
+  const s = video.srcObject;
+  if (s) s.getTracks().forEach(t => t.stop());
+  video.srcObject = null;
+  video.classList.remove("on");
+  setMode("idle");
+  ctx.clearRect(0, 0, CARD_W, CARD_H);
+  hintEl.textContent = "Tap START and allow camera access";
+}
+
+function setMode(m) {
+  mode = m;
+  card.classList.toggle("camera", m === "camera");
+  card.classList.toggle("scanning", m === "scanning");
+  if (m === "idle") captionEl.textContent = "Check your Blood Pressure and more by scanning your face";
+}
+
+// ---------- cover-fit mapping: normalized video coords -> card coords ----------
+function coverMap(nx, ny) {
+  const vw = video.videoWidth || 1280, vh = video.videoHeight || 720;
+  const vAsp = vw / vh, cAsp = CARD_W / CARD_H;
+  let x, y;
+  if (vAsp > cAsp) {                 // video wider -> fit height, crop sides
+    const scale = CARD_H / vh, dispW = vw * scale, offX = (dispW - CARD_W) / 2;
+    x = nx * dispW - offX; y = ny * CARD_H;
+  } else {                            // video taller -> fit width, crop top/bottom
+    const scale = CARD_W / vw, dispH = vh * scale, offY = (dispH - CARD_H) / 2;
+    x = nx * CARD_W; y = ny * dispH - offY;
+  }
+  return [x, y];
+}
+
+// ---------- alignment check against the Safe Grid ----------
+function checkAlignment(landmarks) {
+  let nMinX = 1, nMinY = 1, nMaxX = 0, nMaxY = 0;
+  for (const p of landmarks) {
+    if (p.x < nMinX) nMinX = p.x; if (p.y < nMinY) nMinY = p.y;
+    if (p.x > nMaxX) nMaxX = p.x; if (p.y > nMaxY) nMaxY = p.y;
+  }
+  const [x0, y0] = coverMap(nMinX, nMinY);
+  const [x1, y1] = coverMap(nMaxX, nMaxY);
+  const fcx = (x0 + x1) / 2, fcy = (y0 + y1) / 2, fh = Math.abs(y1 - y0);
+  if (fh < MIN_H) return { ok: false, msg: "Move a little closer" };
+  if (fh > MAX_H) return { ok: false, msg: "Move back slightly" };
+  if (Math.abs(fcx - GRID.cx) > TOL_X || Math.abs(fcy - GRID.cy) > TOL_Y)
+    return { ok: false, msg: "Centre your face in the frame" };
+  return { ok: true, msg: "Hold still…" };
+}
+
+// ---------- main loop ----------
+function loop() {
+  if (!running) return;
+  if (video.currentTime !== lastVideoTime) {
+    lastVideoTime = video.currentTime;
+    const res = faceLandmarker.detectForVideo(video, performance.now());
+    tick(res);
+  }
+  requestAnimationFrame(loop);
+}
+
+function tick(res) {
+  ctx.clearRect(0, 0, CARD_W, CARD_H);
+  const now = performance.now();
+  const has = res.faceLandmarks && res.faceLandmarks.length > 0;
+
+  if (mode === "camera") {
+    if (!has) { captionEl.textContent = "Position your face in the frame"; setGrid("idle"); alignedSince = 0; return; }
+    const a = checkAlignment(res.faceLandmarks[0]);
+    captionEl.textContent = a.msg;
+    setGrid(a.ok ? "aligned" : "idle");
+    if (a.ok) {
+      if (!alignedSince) alignedSince = now;
+      if (now - alignedSince >= HOLD_MS) beginScan(now);
+    } else {
+      alignedSince = 0;
+    }
+  } else if (mode === "scanning") {
+    if (!has) {
+      if (now - lastFaceSeen > 900) { setMode("camera"); alignedSince = 0; }
+      return;
+    }
+    lastFaceSeen = now;
+    captionEl.textContent = "Scanning your face…";
+    // wash scheduling
+    if (now >= nextWashAt) {
+      washStart = now;
+      scanOriginIdx = SCAN_POINTS[Math.floor(Math.random() * SCAN_POINTS.length)];
+      nextWashAt = now + WASH_MS + rand(3000, 7000);
+    }
+    drawMesh(res.faceLandmarks[0], now);
+  }
+}
+let lastFaceSeen = 0;
+
+function beginScan(now) {
+  setMode("scanning");
+  scanStart = now;
+  lastFaceSeen = now;
+  nextWashAt = now + 1200;   // first wash shortly after the scan begins
+}
+
+function setGrid(state) {
+  document.documentElement.style.setProperty("--grid-color",
+    state === "aligned" ? "#46e6b0" : "rgba(255,255,255,0.6)");
+}
+
+// ---------- mesh drawing (card space) ----------
+function getKept(step, count) {
+  const key = step + "_" + count;
+  if (keptCache[key]) return keptCache[key];
+  const set = new Set();
+  const oval = FaceLandmarker.FACE_LANDMARKS_FACE_OVAL.map(c => c.start);
+  for (let j = 0; j < oval.length; j += 2) set.add(oval[j]);
+  for (let i = 0; i < count; i++) if (i % step === 0) set.add(i);
+  const arr = [...set].filter(i => i < count);
+  keptCache[key] = arr;
+  return arr;
+}
+function inCircle(p, a, b, c) {
+  const d = 2 * (a.x * (b.y - c.y) + b.x * (c.y - a.y) + c.x * (a.y - b.y));
+  if (Math.abs(d) < 1e-9) return false;
+  const a2 = a.x * a.x + a.y * a.y, b2 = b.x * b.x + b.y * b.y, c2 = c.x * c.x + c.y * c.y;
+  const ux = (a2 * (b.y - c.y) + b2 * (c.y - a.y) + c2 * (a.y - b.y)) / d;
+  const uy = (a2 * (c.x - b.x) + b2 * (a.x - c.x) + c2 * (b.x - a.x)) / d;
+  const r2 = (a.x - ux) ** 2 + (a.y - uy) ** 2;
+  return (p.x - ux) ** 2 + (p.y - uy) ** 2 < r2 - 1e-9;
+}
+function triangulate(pts) {
+  const n = pts.length;
+  if (n < 3) return [];
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const p of pts) { if (p.x < minX) minX = p.x; if (p.y < minY) minY = p.y; if (p.x > maxX) maxX = p.x; if (p.y > maxY) maxY = p.y; }
+  const dmax = Math.max(maxX - minX, maxY - minY) || 1;
+  const mx = (minX + maxX) / 2, my = (minY + maxY) / 2;
+  const all = pts.concat([{ x: mx - 20 * dmax, y: my - dmax }, { x: mx, y: my + 20 * dmax }, { x: mx + 20 * dmax, y: my - dmax }]);
+  let tris = [[n, n + 1, n + 2]];
+  for (let i = 0; i < n; i++) {
+    const p = all[i], edges = [], keep = [];
+    for (const t of tris) {
+      if (inCircle(p, all[t[0]], all[t[1]], all[t[2]])) edges.push([t[0], t[1]], [t[1], t[2]], [t[2], t[0]]);
+      else keep.push(t);
+    }
+    tris = keep;
+    for (let a = 0; a < edges.length; a++) {
+      let cnt = 0;
+      for (let b = 0; b < edges.length; b++)
+        if ((edges[a][0] === edges[b][0] && edges[a][1] === edges[b][1]) || (edges[a][0] === edges[b][1] && edges[a][1] === edges[b][0])) cnt++;
+      if (cnt === 1) tris.push([edges[a][0], edges[a][1], i]);
+    }
+  }
+  return tris.filter(t => t[0] < n && t[1] < n && t[2] < n);
+}
+
+function drawMesh(landmarks, now) {
+  const step = densities[densityIndex].step;
+  const kept = getKept(step, landmarks.length);
+  const rawPts = kept.map(i => { const [x, y] = coverMap(landmarks[i].x, landmarks[i].y); return { x, y }; });
+
+  let bMinX = Infinity, bMinY = Infinity, bMaxX = -Infinity, bMaxY = -Infinity;
+  for (const p of rawPts) { if (p.x < bMinX) bMinX = p.x; if (p.y < bMinY) bMinY = p.y; if (p.x > bMaxX) bMaxX = p.x; if (p.y > bMaxY) bMaxY = p.y; }
+  const faceDiag = Math.hypot(bMaxX - bMinX, bMaxY - bMinY) || 1;
+
+  const minD2 = (faceDiag * 0.05) ** 2;
+  const pts = [];
+  for (const p of rawPts) {
+    let ok = true;
+    for (const q of pts) { const dx = p.x - q.x, dy = p.y - q.y; if (dx * dx + dy * dy < minD2) { ok = false; break; } }
+    if (ok) pts.push(p);
+  }
+
+  const tris = triangulate(pts);
+  const seen = new Set(), edges = [];
+  for (const t of tris) {
+    const e = [[t[0], t[1]], [t[1], t[2]], [t[2], t[0]]];
+    for (const [a, b] of e) { const k = a < b ? a + "_" + b : b + "_" + a; if (seen.has(k)) continue; seen.add(k); edges.push([a, b]); }
+  }
+
+  const origin = landmarks[scanOriginIdx] || landmarks[1];
+  const [ox, oy] = coverMap(origin.x, origin.y);
+
+  const washP = (now - washStart) / WASH_MS;
+  const washing = washP >= 0 && washP <= 1;
+  const band = 0.34, span = 1.25;
+  const front = washP * (span + band * 2) - band;
+
+  for (const [a, b] of edges) {
+    const mx = (pts[a].x + pts[b].x) / 2, my = (pts[a].y + pts[b].y) / 2;
+    const d = Math.hypot(mx - ox, my - oy) / faceDiag;
+    const s = (d - front) / band;
+    const amount = washing ? Math.max(0, 1 - Math.abs(s)) : 0;
+    const tt = Math.min(1, Math.max(0, (s + 1) / 2));
+    const hue = 200 + tt * 125;
+    const sat = 70 + amount * 30;
+    const light = 100 - amount * 38;
+    const alpha = 0.4 + amount * 0.6;
+    ctx.lineWidth = 0.6 + amount * 1.0;
+    ctx.strokeStyle = `hsla(${hue}, ${sat}%, ${light}%, ${alpha})`;
+    ctx.beginPath(); ctx.moveTo(pts[a].x, pts[a].y); ctx.lineTo(pts[b].x, pts[b].y); ctx.stroke();
+  }
+
+  const dotR = Math.max(1.1, faceDiag * 0.008);
+  ctx.fillStyle = "rgba(140, 225, 255, 0.6)";
+  for (const p of pts) { ctx.beginPath(); ctx.arc(p.x, p.y, dotR, 0, Math.PI * 2); ctx.fill(); }
+
+  const of = washing ? Math.max(0, 1 - washP / 0.45) : 0;
+  if (of > 0) {
+    const cr = Math.round(140 + (255 - 140) * of), cg = Math.round(225 + (255 - 225) * of);
+    ctx.fillStyle = `rgba(${cr}, ${cg}, 255, ${0.6 + of * 0.4})`;
+    ctx.beginPath(); ctx.arc(ox, oy, dotR * (1 + of * 2), 0, Math.PI * 2); ctx.fill();
+  }
+}
+
+// ---------- wire up ----------
+document.getElementById("startBtn").addEventListener("click", startCamera);
+document.getElementById("stopBtn").addEventListener("click", stopCamera);
+window.addEventListener("resize", sizeCanvas);
+createLandmarker().catch(() => {}); // warm up the model early
+</script>
+</body>
+</html>
