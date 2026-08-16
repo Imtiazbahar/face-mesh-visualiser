@@ -243,8 +243,8 @@ const CARD_W = 342, CARD_H = 570;
 const G = { x: 76.5, y: 127, w: 187, h: 232 };
 const GRID = { cx: G.x + G.w / 2, cy: G.y + G.h / 2 };
 
-const MIN_H = 150, MAX_H = 275;   // acceptable face height (card px) => distance
-const TOL_X = 52, TOL_Y = 62;     // off-centre allowance
+const MIN_H = 115, MAX_H = 300;   // acceptable face height (card px) => distance (forgiving for webcams)
+const TOL_X = 62, TOL_Y = 74;     // off-centre allowance
 const HOLD_MS = 180;              // brief debounce before showing the mesh
 
 // ---------- elements ----------
@@ -280,36 +280,59 @@ function sizeCanvas() {
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 }
 
-async function createLandmarker() {
+async function createLandmarker(delegate) {
   const resolver = await FilesetResolver.forVisionTasks(
     "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.12/wasm");
   faceLandmarker = await FaceLandmarker.createFromOptions(resolver, {
     baseOptions: {
       modelAssetPath: "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task",
-      delegate: "GPU"
+      delegate
     },
     runningMode: "VIDEO", numFaces: 1
   });
 }
 
+// Some laptop GPUs fail the WebGL handshake -> fall back to CPU so it still runs.
+let modelPromise = null;
+function ensureModel() {
+  if (faceLandmarker) return Promise.resolve();
+  if (!modelPromise) modelPromise = (async () => {
+    try { await createLandmarker("GPU"); }
+    catch (e) { console.warn("GPU delegate failed, using CPU", e); await createLandmarker("CPU"); }
+  })();
+  return modelPromise;
+}
+
+function showErr(msg) { errEl.textContent = msg; errEl.style.display = "block"; }
+
 async function startCamera() {
   errEl.style.display = "none";
+  let stream;
   try {
-    const stream = await navigator.mediaDevices.getUserMedia({
+    stream = await navigator.mediaDevices.getUserMedia({
       video: { facingMode: "user", width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false
     });
-    video.srcObject = stream;
-    await video.play();
-    if (!faceLandmarker) await createLandmarker();
-    video.classList.add("on");
-    topSection.classList.add("running");
-    running = true;
-    requestAnimationFrame(loop);
   } catch (e) {
-    errEl.textContent = "Camera blocked — allow access and tap START again";
-    errEl.style.display = "block";
+    showErr("Camera blocked — allow access and tap START again");
     console.error(e);
+    return;
   }
+
+  // show the live picture straight away, even before the detector is ready
+  video.srcObject = stream;
+  try { await video.play(); } catch (e) { console.warn(e); }
+  video.classList.add("on");
+  topSection.classList.add("running");
+  running = true;
+
+  // if the camera track ends unexpectedly (desktop quirk), let the user know
+  const track = stream.getVideoTracks()[0];
+  if (track) track.addEventListener("ended", () => { if (running) { showErr("Camera stopped — tap the ✕ and START again"); } });
+
+  // start the detector (GPU, else CPU); begin the loop once it's ready
+  ensureModel()
+    .then(() => { if (running) requestAnimationFrame(loop); })
+    .catch(e => { console.error(e); showErr("Face detection couldn't start on this device"); });
 }
 
 function stopCamera() {
@@ -494,7 +517,7 @@ document.getElementById("stopBtn").addEventListener("click", stopCamera);
 window.addEventListener("resize", () => { sizeCanvas(); fitStage(); });
 sizeCanvas();
 fitStage();
-createLandmarker().catch(() => {});
+ensureModel().catch(() => {});   // warm up the detector (GPU, else CPU)
 </script>
 </body>
 </html>
