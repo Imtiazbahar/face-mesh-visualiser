@@ -165,6 +165,11 @@
     position: fixed; bottom: 14px; left: 0; right: 0; text-align: center;
     font-size: 12px; color: #d33; z-index: 30; display: none;
   }
+  .dbg {
+    position: fixed; top: 8px; left: 8px; z-index: 40; display: none;
+    font: 11px/1.45 ui-monospace, Menlo, monospace; color: #23e07a;
+    background: rgba(0,0,0,0.65); padding: 6px 9px; border-radius: 6px; white-space: pre;
+  }
 </style>
 </head>
 <body>
@@ -234,6 +239,7 @@
   </div>
 
   <div class="err" id="err"></div>
+  <div class="dbg" id="dbg"></div>
 
 <script type="module">
 import { FaceLandmarker, FilesetResolver } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.12";
@@ -243,8 +249,8 @@ const CARD_W = 342, CARD_H = 570;
 const G = { x: 76.5, y: 127, w: 187, h: 232 };
 const GRID = { cx: G.x + G.w / 2, cy: G.y + G.h / 2 };
 
-const MIN_H = 115, MAX_H = 300;   // acceptable face height (card px) => distance (forgiving for webcams)
-const TOL_X = 62, TOL_Y = 74;     // off-centre allowance
+const MIN_H = 80, MAX_H = 340;    // acceptable face height (card px) => distance (webcam-forgiving)
+const TOL_X = 78, TOL_Y = 100;    // off-centre allowance
 const HOLD_MS = 180;              // brief debounce before showing the mesh
 
 // ---------- elements ----------
@@ -255,6 +261,9 @@ const canvas = document.getElementById("mesh");
 const ctx = canvas.getContext("2d");
 const safeGrid = document.getElementById("safeGrid");
 const errEl = document.getElementById("err");
+const dbgEl = document.getElementById("dbg");
+const DEBUG = new URLSearchParams(location.search).has("debug");
+if (DEBUG) dbgEl.style.display = "block";
 
 let faceLandmarker, running = false, lastVideoTime = -1;
 let alignedSince = 0, active = false, prevActive = false;
@@ -360,7 +369,7 @@ function coverMap(nx, ny) {
   }
 }
 
-function isAligned(landmarks) {
+function faceMetrics(landmarks) {
   let nMinX = 1, nMinY = 1, nMaxX = 0, nMaxY = 0;
   for (const p of landmarks) {
     if (p.x < nMinX) nMinX = p.x; if (p.y < nMinY) nMinY = p.y;
@@ -369,9 +378,9 @@ function isAligned(landmarks) {
   const [x0, y0] = coverMap(nMinX, nMinY);
   const [x1, y1] = coverMap(nMaxX, nMaxY);
   const fcx = (x0 + x1) / 2, fcy = (y0 + y1) / 2, fh = Math.abs(y1 - y0);
-  if (fh < MIN_H || fh > MAX_H) return false;
-  if (Math.abs(fcx - GRID.cx) > TOL_X || Math.abs(fcy - GRID.cy) > TOL_Y) return false;
-  return true;
+  const dx = fcx - GRID.cx, dy = fcy - GRID.cy;
+  const ok = fh >= MIN_H && fh <= MAX_H && Math.abs(dx) <= TOL_X && Math.abs(dy) <= TOL_Y;
+  return { ok, fh, dx, dy };
 }
 
 // ---------- loop ----------
@@ -389,7 +398,14 @@ function tick(res) {
   ctx.clearRect(0, 0, CARD_W, CARD_H);
   const now = performance.now();
   const has = res.faceLandmarks && res.faceLandmarks.length > 0;
-  const ok = has && isAligned(res.faceLandmarks[0]);
+  const m = has ? faceMetrics(res.faceLandmarks[0]) : null;
+  const ok = !!(m && m.ok);
+
+  if (DEBUG) {
+    dbgEl.textContent = has
+      ? `face h:${m.fh|0} (need ${MIN_H}-${MAX_H})\ndx:${m.dx|0} (±${TOL_X})  dy:${m.dy|0} (±${TOL_Y})\naligned:${m.ok}`
+      : "no face detected";
+  }
 
   if (ok) {
     if (!alignedSince) alignedSince = now;
