@@ -239,7 +239,7 @@
   </div>
 
   <div class="err" id="err"></div>
-  <div class="dbg" id="dbg"></div>
+  <div class="dbg" id="alignDebug"></div>
 
 <script type="module">
 import { FaceLandmarker, FilesetResolver } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.12";
@@ -261,7 +261,7 @@ const canvas = document.getElementById("mesh");
 const ctx = canvas.getContext("2d");
 const safeGrid = document.getElementById("safeGrid");
 const errEl = document.getElementById("err");
-const dbgEl = document.getElementById("dbg");
+const dbgEl = document.getElementById("alignDebug");
 const DEBUG = new URLSearchParams(location.search).has("debug");
 if (DEBUG) dbgEl.style.display = "block";
 
