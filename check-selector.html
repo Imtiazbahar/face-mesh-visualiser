@@ -302,7 +302,7 @@ function sizeCanvas() {
 async function createLandmarker(delegate) {
   const resolver = await FilesetResolver.forVisionTasks(
     "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.12/wasm");
-  faceLandmarker = await FaceLandmarker.createFromOptions(resolver, {
+  return await FaceLandmarker.createFromOptions(resolver, {
     baseOptions: {
       modelAssetPath: "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task",
       delegate
@@ -311,16 +311,26 @@ async function createLandmarker(delegate) {
   });
 }
 
+function withTimeout(promise, ms) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), ms))
+  ]);
+}
+
 // Some laptop GPUs fail the WebGL handshake -> fall back to CPU so it still runs.
 let modelPromise = null;
 function ensureModel() {
   if (faceLandmarker) return Promise.resolve();
   if (!modelPromise) modelPromise = (async () => {
-    try { stat.model = "init GPU…"; renderStat(); await createLandmarker("GPU"); stat.model = "GPU"; }
-    catch (e) {
-      console.warn("GPU delegate failed, using CPU", e);
-      stat.model = "GPU failed → CPU…"; renderStat();
-      try { await createLandmarker("CPU"); stat.model = "CPU"; }
+    try {
+      stat.model = "init GPU…"; renderStat();
+      faceLandmarker = await withTimeout(createLandmarker("GPU"), 6000);  // don't hang forever on GPU
+      stat.model = "GPU";
+    } catch (e) {
+      console.warn("GPU init failed/timed out, using CPU", e);
+      stat.model = "GPU→CPU…"; renderStat();
+      try { faceLandmarker = await createLandmarker("CPU"); stat.model = "CPU"; }
       catch (e2) { stat.model = "FAILED"; stat.err = (e2 && e2.message) || String(e2); renderStat(); throw e2; }
     }
     renderStat();
