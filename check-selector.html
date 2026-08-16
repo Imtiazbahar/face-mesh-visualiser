@@ -265,6 +265,16 @@ const dbgEl = document.getElementById("alignDebug");
 const DEBUG = new URLSearchParams(location.search).has("debug");
 if (DEBUG) dbgEl.style.display = "block";
 
+const stat = { model: "warming…", video: "-", frames: 0, faces: 0, align: "", err: "" };
+function renderStat() {
+  if (!DEBUG) return;
+  dbgEl.textContent =
+    `model: ${stat.model}\nvideo: ${stat.video}\nframes: ${stat.frames}  faces: ${stat.faces}` +
+    (stat.align ? `\n${stat.align}` : "") +
+    (stat.err ? `\nERR: ${stat.err}` : "");
+}
+renderStat();
+
 let faceLandmarker, running = false, lastVideoTime = -1;
 let alignedSince = 0, active = false, prevActive = false;
 
@@ -306,8 +316,14 @@ let modelPromise = null;
 function ensureModel() {
   if (faceLandmarker) return Promise.resolve();
   if (!modelPromise) modelPromise = (async () => {
-    try { await createLandmarker("GPU"); }
-    catch (e) { console.warn("GPU delegate failed, using CPU", e); await createLandmarker("CPU"); }
+    try { stat.model = "init GPU…"; renderStat(); await createLandmarker("GPU"); stat.model = "GPU"; }
+    catch (e) {
+      console.warn("GPU delegate failed, using CPU", e);
+      stat.model = "GPU failed → CPU…"; renderStat();
+      try { await createLandmarker("CPU"); stat.model = "CPU"; }
+      catch (e2) { stat.model = "FAILED"; stat.err = (e2 && e2.message) || String(e2); renderStat(); throw e2; }
+    }
+    renderStat();
   })();
   return modelPromise;
 }
@@ -388,8 +404,17 @@ function loop() {
   if (!running) return;
   if (video.currentTime !== lastVideoTime) {
     lastVideoTime = video.currentTime;
-    const res = faceLandmarker.detectForVideo(video, performance.now());
-    tick(res);
+    stat.video = `${video.videoWidth}x${video.videoHeight}`;
+    try {
+      const res = faceLandmarker.detectForVideo(video, performance.now());
+      stat.frames++;
+      stat.faces = (res.faceLandmarks && res.faceLandmarks.length) || 0;
+      tick(res);
+    } catch (e) {
+      // one bad frame must not kill the loop — record it and carry on
+      stat.err = (e && e.message) || String(e);
+      renderStat();
+    }
   }
   requestAnimationFrame(loop);
 }
@@ -401,11 +426,10 @@ function tick(res) {
   const m = has ? faceMetrics(res.faceLandmarks[0]) : null;
   const ok = !!(m && m.ok);
 
-  if (DEBUG) {
-    dbgEl.textContent = has
-      ? `face h:${m.fh|0} (need ${MIN_H}-${MAX_H})\ndx:${m.dx|0} (±${TOL_X})  dy:${m.dy|0} (±${TOL_Y})\naligned:${m.ok}`
-      : "no face detected";
-  }
+  stat.align = has
+    ? `face h:${m.fh|0} (need ${MIN_H}-${MAX_H})  dx:${m.dx|0}/${TOL_X} dy:${m.dy|0}/${TOL_Y}  ok:${m.ok}`
+    : "no face in view";
+  renderStat();
 
   if (ok) {
     if (!alignedSince) alignedSince = now;
