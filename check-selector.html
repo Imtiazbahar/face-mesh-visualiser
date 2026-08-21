@@ -264,13 +264,18 @@ const errEl = document.getElementById("err");
 const dbgEl = document.getElementById("alignDebug");
 const _params = new URLSearchParams(location.search);
 const DEBUG = _params.has("debug");
-// Engine choice. Phones handle the GPU well (fast); some laptop/desktop GPUs *hang*
-// on startup and freeze the page, so the GPU→CPU auto-fallback can't even fire.
-// Default therefore = GPU on mobile, CPU on desktop. Overrides: ?gpu=1 / ?cpu=1.
-const IS_MOBILE = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
+// Engine choice. In this prototype phones run the GPU path well (fast); some
+// laptop/desktop GPUs *hang* on startup and freeze the page, so the GPU→CPU
+// auto-fallback can't even fire (a timer can't interrupt a frozen main thread).
+// Default therefore = GPU on mobile, CPU on desktop. Overrides: ?gpu=1 / ?cpu=1
+// (if both are present, CPU wins — it's the always-works choice).
+// iPadOS reports a desktop "Macintosh" UA, so detect it via touch points too,
+// otherwise iPads would be wrongly treated as desktops and put on CPU.
+const IS_IPADOS = navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1;
+const IS_MOBILE = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) || IS_IPADOS;
 const FORCE_CPU = _params.has("cpu");
 const FORCE_GPU = _params.has("gpu");
-const USE_GPU_FIRST = FORCE_GPU || (IS_MOBILE && !FORCE_CPU);
+const USE_GPU_FIRST = !FORCE_CPU && (FORCE_GPU || IS_MOBILE);
 if (DEBUG) dbgEl.style.display = "block";
 
 const stat = { model: "warming…", video: "-", frames: 0, faces: 0, align: "", err: "" };
@@ -339,7 +344,10 @@ function ensureModel() {
     }
     try {
       stat.model = "init GPU…"; renderStat();
-      faceLandmarker = await withTimeout(createLandmarker("GPU"), 6000);  // don't hang forever on GPU
+      // Secondary safety net for ordinary async GPU failures. Note: this only
+      // helps if the event loop stays responsive — it can't interrupt a true
+      // main-thread freeze (that's why desktop avoids the GPU entirely above).
+      faceLandmarker = await withTimeout(createLandmarker("GPU"), 6000);
       stat.model = "GPU";
     } catch (e) {
       console.warn("GPU init failed/timed out, using CPU", e);
