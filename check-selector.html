@@ -262,7 +262,11 @@ const ctx = canvas.getContext("2d");
 const safeGrid = document.getElementById("safeGrid");
 const errEl = document.getElementById("err");
 const dbgEl = document.getElementById("alignDebug");
-const DEBUG = new URLSearchParams(location.search).has("debug");
+const _params = new URLSearchParams(location.search);
+const DEBUG = _params.has("debug");
+// ?cpu=1 skips the GPU entirely and runs on CPU — for laptops whose GPU face-engine
+// hangs on startup (the GPU→CPU auto-fallback can be flaky; this removes the race).
+const FORCE_CPU = _params.has("cpu");
 if (DEBUG) dbgEl.style.display = "block";
 
 const stat = { model: "warming…", video: "-", frames: 0, faces: 0, align: "", err: "" };
@@ -323,6 +327,12 @@ let modelPromise = null;
 function ensureModel() {
   if (faceLandmarker) return Promise.resolve();
   if (!modelPromise) modelPromise = (async () => {
+    // Forced CPU path: don't even attempt the GPU (no hang, no 6s wait).
+    if (FORCE_CPU) {
+      stat.model = "CPU (forced)…"; renderStat();
+      try { faceLandmarker = await createLandmarker("CPU"); stat.model = "CPU (forced)"; renderStat(); return; }
+      catch (e2) { stat.model = "FAILED"; stat.err = (e2 && e2.message) || String(e2); renderStat(); throw e2; }
+    }
     try {
       stat.model = "init GPU…"; renderStat();
       faceLandmarker = await withTimeout(createLandmarker("GPU"), 6000);  // don't hang forever on GPU
